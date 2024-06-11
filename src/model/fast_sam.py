@@ -11,7 +11,7 @@ import logging
 import os.path as osp
 from typing import Any, Dict, List, Optional, Tuple
 import pytorch_lightning as pl
-from ultralytics import yolo  # noqa
+# from ultralytics import yolo  # noqa
 from ultralytics.nn.autobackend import AutoBackend
 
 

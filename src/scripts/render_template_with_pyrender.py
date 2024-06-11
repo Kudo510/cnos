@@ -53,20 +53,20 @@ def render(cfg: DictConfig) -> None:
     OmegaConf.set_struct(cfg, False)
     root_save_dir = osp.join(cfg.data.root_dir, "templates_pyrender")
     template_poses = get_obj_poses_from_template_level(
-        level=cfg.level, pose_distribution="all"
+        level=cfg.level, pose_distribution="all" #level = 0 
     )
-    template_poses[:, :3, 3] *= 0.4  # zoom to object
+    template_poses[:, :3, 3] *= 0.4  # zoom to object # multiple the tranlation- the fourth column by 0.4
 
     for dataset_name in [
-        "lmo",
         "tless",
         "tudl",
         "icbin",
         "itodd",
         "hb",
         "ycbv",
+        "lmo",
     ]:
-        dataset_save_dir = osp.join(root_save_dir, dataset_name)
+        dataset_save_dir = osp.join(root_save_dir, dataset_name) # ...templates_pyrender/dataset_name
         logging.info(f"Rendering templates for {dataset_name}")
         os.makedirs(dataset_save_dir, exist_ok=True)
         obj_pose_path = f"{dataset_save_dir}/template_poses.npy"
@@ -84,7 +84,7 @@ def render(cfg: DictConfig) -> None:
                 for name in os.listdir(cad_dir)
                 if name.endswith(".ply")
             ]
-        )
+        ) ## all cad models name .ply
         for object_id in object_ids:
             cad_paths.append(
                 os.path.join(

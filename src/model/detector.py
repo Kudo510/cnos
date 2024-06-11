@@ -51,6 +51,7 @@ class CNOS(pl.LightningModule):
             ]
         )
         logging.info(f"Init CNOS done!")
+        
 
     def set_reference_objects(self):
         os.makedirs(
@@ -60,7 +61,9 @@ class CNOS(pl.LightningModule):
 
         start_time = time.time()
         self.ref_data = {"descriptors": BatchedData(None)}
-        descriptors_path = osp.join(self.ref_dataset.template_dir, "descriptors.pth")
+        descriptors_path = osp.join(self.ref_dataset.template_dir, "descriptors.pth") # ./datasets/bop23_challenge/datasets/templates_pyrender/icbin/descriptors_pbr.pth for pbr renderer
+
+        ## self.ref_dataset is src.dataloader.bop.BOPTemplatePBR
         if self.onboarding_config.rendering_type == "pbr":
             descriptors_path = descriptors_path.replace(".pth", "_pbr.pth")
         if (
@@ -116,7 +119,7 @@ class CNOS(pl.LightningModule):
         elif self.matching_config.aggregation_function == "max":
             score_per_proposal_and_object = torch.max(scores, dim=-1)[0]
         elif self.matching_config.aggregation_function == "avg_5":
-            score_per_proposal_and_object = torch.topk(scores, k=5, dim=-1)[0]
+            score_per_proposal_and_object = torch.topk(scores, k=5, dim=-1)[0] # average the top 5 scores to get teh final score
             score_per_proposal_and_object = torch.mean(
                 score_per_proposal_and_object, dim=-1
             )
@@ -149,12 +152,12 @@ class CNOS(pl.LightningModule):
         assert batch["image"].shape[0] == 1, "Batch size must be 1"
 
         image_np = (
-            self.inv_rgb_transform(batch["image"][0])
+            self.inv_rgb_transform(batch["image"][0]) # batch["image"][0] 0 to retrun image 3,H,W cos the batch has size of batch_size,3,W,H - where batch_size = 1
             .cpu()
             .numpy()
             .transpose(1, 2, 0)
         )
-        image_np = np.uint8(image_np.clip(0, 1) * 255)
+        image_np = np.uint8(image_np.clip(0, 1) * 255) # just get image in numpy in range of 0,255
 
         # run propoals
         proposal_stage_start_time = time.time()
@@ -166,7 +169,7 @@ class CNOS(pl.LightningModule):
             config=self.post_processing_config.mask_post_processing
         )
         # compute descriptors
-        query_decriptors = self.descriptor_model(image_np, detections)
+        query_decriptors = self.descriptor_model(image_np, detections) # descriptor_model = dinov2 # so here is for getting proposal_descriptors
         proposal_stage_end_time = time.time()
 
         # matching descriptors

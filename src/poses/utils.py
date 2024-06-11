@@ -68,7 +68,7 @@ def inverse_transform(trans):
 
 
 def get_obj_poses_from_template_level(
-    level, pose_distribution, return_cam=False, return_index=False
+    level, pose_distribution, return_cam=False, return_index=False # level = 0, pose_distribution = all, return_cam=False, return_index=False
 ):
     root_project = get_root_project()
     if return_cam:

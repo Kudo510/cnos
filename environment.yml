@@ -7,7 +7,7 @@ channels:
   - defaults
 dependencies:
   - pip
-  - python=3.9.6
+  - python=3.9
   - pip:
     - torch
     - torchvision

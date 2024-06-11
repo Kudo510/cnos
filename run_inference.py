@@ -17,13 +17,13 @@ def run_inference(cfg: DictConfig):
     )
     logging.info("Initializing logger, callbacks and trainer")
 
-    if cfg.machine.name == "slurm":
+    if cfg.machine.name == "slurm": # not our case
         num_gpus = int(os.environ["SLURM_GPUS_ON_NODE"])
         num_nodes = int(os.environ["SLURM_NNODES"])
         cfg.machine.trainer.devices = num_gpus
         cfg.machine.trainer.num_nodes = num_nodes
         logging.info(f"Slurm config: {num_gpus} gpus,  {num_nodes} nodes")
-    trainer = instantiate(cfg.machine.trainer)
+    trainer = instantiate(cfg.machine.trainer) # is pytorch_lightning.Trainer with config as configs/machine/trainer/local.yaml
 
     default_ref_dataloader_config = cfg.data.reference_dataloader
     default_query_dataloader_config = cfg.data.query_dataloader
@@ -35,14 +35,14 @@ def run_inference(cfg: DictConfig):
         query_dataloader_config.split = "test_primesense"
     else:
         query_dataloader_config.split = "test"
-    query_dataloader_config.root_dir += f"{cfg.dataset_name}"
-    query_dataset = instantiate(query_dataloader_config)
+    query_dataloader_config.root_dir += f"{cfg.dataset_name}" # ./datasets/bop23_challenge/datasets/tless
+    query_dataset = instantiate(query_dataloader_config) # src.dataloader.bop.BaseBOPTest for tless
 
     logging.info("Initializing model")
-    model = instantiate(cfg.model)
+    model = instantiate(cfg.model) # src.model.detector.CNOS
 
-    model.ref_obj_names = cfg.data.datasets[cfg.dataset_name].obj_names
-    model.dataset_name = cfg.dataset_name
+    model.ref_obj_names = cfg.data.datasets[cfg.dataset_name].obj_names # list of [001_obj, oo2_obj,..., 028_obj] 
+    model.dataset_name = cfg.dataset_name # tless
 
     query_dataloader = DataLoader(
         query_dataset,
@@ -50,25 +50,25 @@ def run_inference(cfg: DictConfig):
         num_workers=cfg.machine.num_workers,
         shuffle=False,
     )
-    if cfg.model.onboarding_config.rendering_type == "pyrender":
+    if cfg.model.onboarding_config.rendering_type == "pyrender": # our case pbr not pyrender
         ref_dataloader_config.template_dir += f"templates_pyrender/{cfg.dataset_name}"
         ref_dataset = instantiate(ref_dataloader_config)
-    elif cfg.model.onboarding_config.rendering_type == "pbr":
+    elif cfg.model.onboarding_config.rendering_type == "pbr": # here our case
         logging.info("Using BlenderProc for reference images")
         ref_dataloader_config._target_ = "src.dataloader.bop_pbr.BOPTemplatePBR"
         ref_dataloader_config.root_dir = f"{query_dataloader_config.root_dir}"
-        ref_dataloader_config.template_dir += f"templates_pyrender/{cfg.dataset_name}"
-        ref_dataset = instantiate(ref_dataloader_config)
+        ref_dataloader_config.template_dir += f"templates_pyrender/{cfg.dataset_name}" # ./datasets/bop23_challenge/datasets/templates_pyrender/icbin'
+        ref_dataset = instantiate(ref_dataloader_config) # src.dataloader.bop.BOPTemplatePBR
         ref_dataset.load_processed_metaData(reset_metaData=True)
     else:
         raise NotImplementedError
-    model.ref_dataset = ref_dataset
+    model.ref_dataset = ref_dataset # src.dataloader.bop.BOPTemplatePBR
 
-    segmentation_name = cfg.model.segmentor_model._target_.split(".")[-1]
-    agg_function = cfg.model.matching_config.aggregation_function
-    rendering_type = cfg.model.onboarding_config.rendering_type
-    level_template = cfg.model.onboarding_config.level_templates
-    model.name_prediction_file = f"{segmentation_name}_template_{rendering_type}{level_template}_agg{agg_function}_{cfg.dataset_name}"
+    segmentation_name = cfg.model.segmentor_model._target_.split(".")[-1] # CNOS
+    agg_function = cfg.model.matching_config.aggregation_function #avg_5
+    rendering_type = cfg.model.onboarding_config.rendering_type # pbr
+    level_template = cfg.model.onboarding_config.level_templates # 0: which is coarse
+    model.name_prediction_file = f"{segmentation_name}_template_{rendering_type}{level_template}_agg{agg_function}_{cfg.dataset_name}" # just the file name
     logging.info(f"Loading dataloader for {cfg.dataset_name} done!")
     trainer.test(
         model,

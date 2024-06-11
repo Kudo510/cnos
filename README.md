@@ -145,12 +145,15 @@ There are two options:
 
 ```
 python -m src.scripts.visualize dataset_name=$DATASET_NAME input_file=$INPUT_FILE output_dir=$OUTPUT_DIR
+python -m src.scripts.visualize dataset_name=$DATASET_NAME input_file=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_lmo.json output_dir=outputs
 ```
 
 2.b. Using Detectron2 (display both masks, objectID, scores)
 ```
 python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
 python -m src.scripts.visualize_detectron2 dataset_name=$DATASET_NAME input_file=$INPUT_FILE output_dir=$OUTPUT_DIR
+
+python -m src.scripts.visualize_detectron2 dataset_name=$DATASET_NAME input_file=datasets/bop23_challenge/results/cnos_expsoutput_dir=outputs
 
 ```
 

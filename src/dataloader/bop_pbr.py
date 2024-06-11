@@ -39,30 +39,30 @@ class BOPTemplatePBR(BaseBOP):
         max_num_frames=1000,  # not need to search all frames since it is slow
         **kwargs,
     ):
-        self.template_dir = template_dir
+        self.template_dir = template_dir # './datasets/bop23_challenge/datasets/templates_pyrender/icbin'
         obj_ids = [
             int(obj_id[4:])
             for obj_id in os.listdir(template_dir)
             if osp.isdir(osp.join(template_dir, obj_id))
-        ]
+        ] # all object in the template_dir folder - here [1,2]
         obj_ids = sorted(obj_ids)
         logging.info(f"Found {obj_ids} objects in {self.template_dir}")
         self.obj_ids = obj_ids
 
-        self.level_templates = level_templates
-        self.pose_distribution = pose_distribution
+        self.level_templates = level_templates # 0
+        self.pose_distribution = pose_distribution # all
         self.load_template_poses(level_templates, pose_distribution)
-        self.processing_config = processing_config
-        self.root_dir = root_dir
-        self.split = split
+        self.processing_config = processing_config #{'image_size': 224, 'max_num_scenes': 10, 'max_num_frames': 500, 'min_visib_fract': 0.8, 'num_references': 200, 'use_visible_mask': True}}
+        self.root_dir = root_dir # ./datasets/bop23_challenge/datasets/icbin
+        self.split = split # train_pbr
         self.load_list_scene(split=split)
         logging.info(
             f"Found {len(self.list_scenes)} scene, but using only {max_num_scenes} scene for faster runtime"
         )
 
         self.list_scenes = self.list_scenes[:max_num_scenes]
-        self.max_num_frames = max_num_frames
-        self.min_visib_fract = min_visib_fract
+        self.max_num_frames = max_num_frames #1000
+        self.min_visib_fract = min_visib_fract #0.8
         self.rgb_transform = T.Compose(
             [
                 T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
@@ -139,7 +139,7 @@ class BOPTemplatePBR(BaseBOP):
         )
         return metaData
 
-    def load_template_poses(self, level_templates, pose_distribution):
+    def load_template_poses(self, level_templates, pose_distribution):  ## here is where we choose only 42 templates from all the images only
         if pose_distribution == "all":
             self.index_templates = load_index_level_in_level2(level_templates, "all")
             self.template_poses = get_obj_poses_from_template_level(
@@ -215,8 +215,8 @@ class BOPTemplatePBR(BaseBOP):
                 "mask_visib",
                 f"{frame_id:06d}_{idx_obj:06d}.png",
             )
-            rgb = Image.open(rgb_path)
-            mask = Image.open(mask_path)
+            rgb = Image.open(rgb_path) # rgb path = datasets/bop23_challenge/datasets/icbin/train_pbr/000003/rgb/000725.jpg
+            mask = Image.open(mask_path) # mask_path = /datasets/bop23_challenge/datasets/icbin/train_pbr/000003/mask_visib/000725_000018.png
             masked_rgb = Image.composite(
                 rgb, Image.new("RGB", rgb.size, (0, 0, 0)), mask
             )
@@ -231,7 +231,7 @@ class BOPTemplatePBR(BaseBOP):
         templates = torch.stack(templates).permute(0, 3, 1, 2)
         boxes = torch.tensor(np.array(boxes))
         templates_croped = self.proposal_processor(images=templates, boxes=boxes)
-        return {"templates": self.rgb_transform(templates_croped)}
+        return {"templates": self.rgb_transform(templates_croped)} # to normalize the template
 
 
 if __name__ == "__main__":

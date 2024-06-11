@@ -90,6 +90,7 @@ if __name__ == "__main__":
         )
         img_size = [480, 640]
         is_tless = False
+        
 
     # load mesh to meter
     mesh = trimesh.load_mesh(args.cad_path)
