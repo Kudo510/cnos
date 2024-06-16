@@ -15,6 +15,7 @@ import time
 import glob
 from functools import partial
 import multiprocessing
+import cv2
 
 
 class CNOS(pl.LightningModule):
@@ -107,7 +108,7 @@ class CNOS(pl.LightningModule):
 
     def find_matched_proposals(self, proposal_decriptors):
         # compute matching scores for each proposals
-        scores = self.matching_config.metric(
+        scores = self.matching_config.metric( # src.model.loss.PairwiseSimilarity
             proposal_decriptors, self.ref_data["descriptors"]
         )  # N_proposals x N_objects x N_templates
         if self.matching_config.aggregation_function == "mean":
@@ -161,30 +162,31 @@ class CNOS(pl.LightningModule):
 
         # run propoals
         proposal_stage_start_time = time.time()
-        proposals = self.segmentor_model.generate_masks(image_np)
+        proposals = self.segmentor_model.generate_masks(image_np) ## proposals are the dict with masks and boxes of the objects
 
         # init detections with masks and boxes
-        detections = Detections(proposals)
+        detections = Detections(proposals) 
         detections.remove_very_small_detections(
             config=self.post_processing_config.mask_post_processing
-        )
+        ) # here we get 68 proposals of 489*640 but filtering out all small proposals we get 39 detections
+
         # compute descriptors
-        query_decriptors = self.descriptor_model(image_np, detections) # descriptor_model = dinov2 # so here is for getting proposal_descriptors
+        query_decriptors = self.descriptor_model(image_np, detections) # descriptor_model = dinov2 # so here is for getting proposal_descriptors from the filtered masks and bboxes - shape 56,1024- means we have 56 proposals
         proposal_stage_end_time = time.time()
 
         # matching descriptors
         matching_stage_start_time = time.time()
         (
-            idx_selected_proposals,
+            idx_selected_proposals, # from 0 to 55 - so 56 indices
             pred_idx_objects,
             pred_scores,
-        ) = self.find_matched_proposals(query_decriptors)
+        ) = self.find_matched_proposals(query_decriptors) # query_decriptors shape of 56, 1024
 
         # update detections
-        detections.filter(idx_selected_proposals)
-        detections.add_attribute("scores", pred_scores)
-        detections.add_attribute("object_ids", pred_idx_objects)
-        detections.apply_nms_per_object_id(
+        detections.filter(idx_selected_proposals) # takes only the proposals that found the matched - just save all the indices from idx_selected_proposals
+        detections.add_attribute("scores", pred_scores) # score of this match
+        detections.add_attribute("object_ids", pred_idx_objects) # matched obj_id 
+        detections.apply_nms_per_object_id( # filter out - using nms to get rif of overlap proposals
             nms_thresh=self.post_processing_config.nms_thresh
         )
         matching_stage_end_time = time.time()
@@ -196,24 +198,25 @@ class CNOS(pl.LightningModule):
             - matching_stage_start_time
         )
         detections.to_numpy()
-
-        scene_id = batch["scene_id"][0]
-        frame_id = batch["frame_id"][0]
+        
+        # basically getting the scene and frame id to get the adrress of the propsal- basically what we have at the end is the proposals and its matched in the frame id from the scene y
+        scene_id = batch["scene_id"][0] # '000001'
+        frame_id = batch["frame_id"][0] # '51'
         file_path = osp.join(
             self.log_dir,
             f"predictions/{self.dataset_name}/{self.name_prediction_file}/scene{scene_id}_frame{frame_id}",
-        )
+        ) # './datasets/bop23_challenge/results/cnos_exps/predictions/icbin/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin/scene000001_frame51' - so like output path
 
-        # save detections to file
+        # save detections to file # here to save the npz file dos zB  datasets/bop23_challenge/results/cnos_exps/predictions/icbin/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin/scene000001_frame0.npz
         results = detections.save_to_file(
             scene_id=int(scene_id),
             frame_id=int(frame_id),
-            runtime=runtime,
+            runtime=runtime, # just time to run the test thoi ys
             file_path=file_path,
             dataset_name=self.dataset_name,
             return_results=True,
         )
-        # save runtime to file
+        # save runtime to file # so this is the runtime file in predictions do - zB datasets/bop23_challenge/results/cnos_exps/predictions/icbin/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin/scene000001_frame0_runtime.npz - it just contains the runing time for proposal and matching stage
         np.savez(
             file_path + "_runtime",
             proposal_stage=proposal_stage_end_time - proposal_stage_start_time,
@@ -259,3 +262,65 @@ class CNOS(pl.LightningModule):
             detections_path = f"{self.log_dir}/{self.name_prediction_file}.json"
             save_json_bop23(detections_path, formatted_detections)
             logging.info(f"Saved predictions to {detections_path}")
+
+    def test_an_image_step(self, image_path):
+        image_np = cv2.imread(image_path)
+        image_np = (
+            self.inv_rgb_transform(batch["image"][0]) # batch["image"][0] 0 to retrun image 3,H,W cos the batch has size of batch_size,3,W,H - where batch_size = 1
+            .cpu()
+            .numpy()
+            .transpose(1, 2, 0)
+        )
+        image_np = np.uint8(image_np.clip(0, 1) * 255) # just get image in numpy in range of 0,255
+
+        # run propoals
+        proposal_stage_start_time = time.time()
+        proposals = self.segmentor_model.generate_masks(image_np) ## proposals are the dict with masks and boxes of the objects
+
+        # init detections with masks and boxes
+        detections = Detections(proposals) 
+        detections.remove_very_small_detections(
+            config=self.post_processing_config.mask_post_processing
+        ) # here we get 68 proposals of 489*640 but filtering out all small proposals we get 39 detections
+
+        # compute descriptors
+        query_decriptors = self.descriptor_model(image_np, detections) # descriptor_model = dinov2 # so here is for getting proposal_descriptors from the filtered masks and bboxes - shape 56,1024- means we have 56 proposals
+        proposal_stage_end_time = time.time()
+
+        # matching descriptors
+        matching_stage_start_time = time.time()
+        (
+            idx_selected_proposals, # from 0 to 55 - so 56 indices
+            pred_idx_objects,
+            pred_scores,
+        ) = self.find_matched_proposals(query_decriptors) # query_decriptors shape of 56, 1024
+
+        # update detections
+        detections.filter(idx_selected_proposals) # takes only the proposals that found the matched - just save all the indices from idx_selected_proposals
+        detections.add_attribute("scores", pred_scores) # score of this match
+        detections.add_attribute("object_ids", pred_idx_objects) # matched obj_id 
+        detections.apply_nms_per_object_id( # filter out - using nms to get rif of overlap proposals
+            nms_thresh=self.post_processing_config.nms_thresh
+        )
+        matching_stage_end_time = time.time()
+
+        detections.to_numpy()
+        
+        # basically getting the scene and frame id to get the adrress of the propsal- basically what we have at the end is the proposals and its matched in the frame id from the scene y
+        file_path = osp.join(
+            self.log_dir,
+            f"predictions/{self.dataset_name}/{self.name_prediction_file}/scene{scene_id}_frame{frame_id}",
+        ) # './datasets/bop23_challenge/results/cnos_exps/predictions/icbin/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin/scene000001_frame51' - so like output path
+
+        # save detections to file # here to save the npz file dos zB  datasets/bop23_challenge/results/cnos_exps/predictions/icbin/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin/scene000001_frame0.npz
+        results = detections.save_to_file(
+            scene_id=int(scene_id),
+            frame_id=int(frame_id),
+            runtime=runtime, # just time to run the test thoi ys
+            file_path=file_path,
+            dataset_name=self.dataset_name,
+            return_results=True,
+        )
+        # save runtime to file # so this is the runtime file in predictions do - zB datasets/bop23_challenge/results/cnos_exps/predictions/icbin/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin/scene000001_frame0_runtime.npz - it just contains the runing time for proposal and matching stage
+
+        return 0

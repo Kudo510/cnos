@@ -82,7 +82,7 @@ class Detections:
     A structure for storing detections.
     """
 
-    def __init__(self, data) -> None:
+    def __init__(self, data) -> None: # data is dict of boxes and masks
         if isinstance(data, str):
             data = self.load_from_file(data)
         for key, value in data.items():
@@ -94,18 +94,20 @@ class Detections:
             self.boxes = self.boxes.long()
 
     def remove_very_small_detections(self, config):
+        # min_box_size: 0.05 # relative to image size 
+        # min_mask_size: 3e-4 # relative to image size
         img_area = self.masks.shape[1] * self.masks.shape[2]
         box_areas = box_area(self.boxes) / img_area
         mask_areas = self.masks.sum(dim=(1, 2)) / img_area
         keep_idxs = torch.logical_and(
             box_areas > config.min_box_size**2, mask_areas > config.min_mask_size
-        )
+        ) 
         # logging.info(f"Removing {len(keep_idxs) - keep_idxs.sum()} detections")
         for key in self.keys:
             setattr(self, key, getattr(self, key)[keep_idxs])
 
     def apply_nms_per_object_id(self, nms_thresh=0.5):
-        keep_idxs = BatchedData(None)
+        keep_idxs = BatchedData(None) ## cos later we will use .cat to add data to the object
         all_indexes = torch.arange(len(self.object_ids), device=self.boxes.device)
         for object_id in torch.unique(self.object_ids):
             idx = self.object_ids == object_id

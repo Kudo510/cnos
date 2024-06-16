@@ -42,10 +42,11 @@ def visualize(cfg: DictConfig) -> None:
         img = np.array(img)
         visualizer = CNOSVisualizer(object_names, img_size=img.shape[:2])
         
+        ## all lb is just to load, masks, assgined object ids for the proposals- like which objects that is similiar the most to the proposals, the confidence score and the bboxes of the propsals in the original image
         masks, object_ids, scores, bboxes = [], [], [], []
         for det in dets:
-            if det['scene_id'] == scene_id and det['image_id'] == image_id:
-                masks.append(rle_to_mask(det['segmentation']))
+            if det['scene_id'] == scene_id and det['image_id'] == image_id: # image_id is frame_id
+                masks.append(rle_to_mask(det['segmentation'])) # Compute a binary mask from an uncompressed RLE
                 object_ids.append(det['category_id']-1)
                 scores.append(det['score'])
                 bbox = det['bbox']
@@ -57,6 +58,8 @@ def visualize(cfg: DictConfig) -> None:
         assert len(masks) == len(object_ids) == len(scores) == len(bboxes)
         assert np.max(object_ids) <= len(object_names)
         object_ids = np.array(object_ids)
+        
+
         # conver image to gray scale
         gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         img = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
@@ -66,8 +69,10 @@ def visualize(cfg: DictConfig) -> None:
         os.makedirs(scene_dir, exist_ok=True)
         save_path = f"{scene_dir}/{image_id:06d}.png"
         
+        # so visulaizer input will be rgb, mass, boxesm scores, object_ids, save path for the output visulization thoi- nc simple - then we get the image showed like in the output folder
         visualizer.forward(rgb=img, masks=masks, bboxes=bboxes, scores=scores, labels=object_ids, save_path=save_path)
         prediction = Image.open(save_path)
+        
         # concat side by side in PIL
         concat = Image.new('RGB', (img.shape[1] + prediction.size[0], img.shape[0]))
         concat.paste(rgb, (0, 0))

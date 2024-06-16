@@ -87,24 +87,24 @@ class CustomResizeLongestSide(ResizeLongestSide):
 
 
 class CropResizePad:
-    def __init__(self, target_size):
+    def __init__(self, target_size): # target_size = 224
         if isinstance(target_size, int):
-            target_size = (target_size, target_size)
+            target_size = (target_size, target_size) # 224,224
         self.target_size = target_size
-        self.target_ratio = self.target_size[1] / self.target_size[0]
-        self.target_h, self.target_w = target_size
+        self.target_ratio = self.target_size[1] / self.target_size[0] # =1 
+        self.target_h, self.target_w = target_size # 224
         self.target_max = max(self.target_h, self.target_w)
 
     def __call__(self, images, boxes):
-        box_sizes = boxes[:, 2:] - boxes[:, :2]
-        scale_factor = self.target_max / torch.max(box_sizes, dim=-1)[0]
+        box_sizes = boxes[:, 2:] - boxes[:, :2] # (x1,y1) - (x0,y0)
+        scale_factor = self.target_max / torch.max(box_sizes, dim=-1)[0] # 224/max of x1,y1,x2,y2
         processed_images = []
         for image, box, scale in zip(images, boxes, scale_factor):
             # crop and scale
             image = image[:, box[1] : box[3], box[0] : box[2]]
             image = F.interpolate(image.unsqueeze(0), scale_factor=scale.item())[0]
             # pad and resize
-            original_h, original_w = image.shape[1:]
+            original_h, original_w = image.shape[1:] 
             original_ratio = original_w / original_h
 
             # check if the original and final aspect ratios are the same within a margin

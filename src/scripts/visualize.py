@@ -33,8 +33,8 @@ def visualize(cfg: DictConfig) -> None:
     with open(cfg.input_file, 'r') as f:
         dets = json.load(f)
     logging.info(f'Loaded {len(dets)} detections')
-    dets = [det for det in dets if det['score'] > cfg.conf_threshold]
-    logging.info(f'Keeping only {len(dets)} detections having score > {cfg.conf_threshold}')
+    dets = [det for det in dets if det['score'] > cfg.conf_threshold] # keeps the det if it has score > threshold
+    logging.info(f'Keeping only {len(dets)} detections having score > {cfg.conf_threshold}') # keeps the det if it has score > threshold
     
     
     # sort by (scene_id, frame_id)
@@ -51,7 +51,7 @@ def visualize(cfg: DictConfig) -> None:
         for det in dets:
             if det['scene_id'] == scene_id and det['image_id'] == image_id:
                 masks.append(rle_to_mask(det['segmentation']))
-                object_ids.append(det['category_id']-1)
+                object_ids.append(det['category_id']-1)  ## category_id is object_id
                 scores.append(det['score'])
         # color_map = {obj_id: color for obj_id in np.unique(object_ids)}
         gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)

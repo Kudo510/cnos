@@ -81,6 +81,7 @@ def run_inference(template_dir, rgb_path, num_max_dets, conf_threshold, stabilit
         cfg.model.segmentor_model.stability_score_thresh = stability_score_thresh
     metric = Similarity()
     logging.info("Initializing model")
+    
     model = instantiate(cfg.model)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

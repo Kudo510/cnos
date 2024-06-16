@@ -67,7 +67,7 @@ def inverse_transform(trans):
     return output
 
 
-def get_obj_poses_from_template_level(
+def get_obj_poses_from_template_level( # return poses and its index (just from 0 to number of poses) - here index from 0 to 41)
     level, pose_distribution, return_cam=False, return_index=False # level = 0, pose_distribution = all, return_cam=False, return_index=False
 ):
     root_project = get_root_project()
@@ -100,7 +100,7 @@ def get_obj_poses_from_template_level(
             return obj_poses[cam_poses[:, 2, 3] >= 0]
 
 
-def load_index_level_in_level2(level, pose_distribution):
+def load_index_level_in_level2(level, pose_distribution): # load file idx_all_level0_in_level2.npy
     # created from https://github.com/nv-nguyen/DiffusionPose/blob/52e2c55b065c9637dcd284cc77a0bfb3356d218a/src/poses/find_neighbors.py
     root_repo = get_root_project()
     index_path = os.path.join(
@@ -262,13 +262,14 @@ class NearestTemplateFinder(object):
         # we use the location to find for nearest template on the sphere
         self.obj_template_openGL_poses = opencv2opengl(self.obj_template_poses)
 
-    def search_nearest_template(self, obj_query_pose):
+    def search_nearest_template(self, obj_query_pose): # Find the nearst templates to the given query pose
         # convert query pose to OpenGL coordinate
         obj_query_openGL_pose = opencv2opengl(obj_query_pose)
-        obj_query_openGL_location = obj_query_openGL_pose[:, 2, :3]  # Mx3
-        obj_template_openGL_locations = self.obj_template_openGL_poses[:, 2, :3]  # Nx3
+        obj_query_openGL_location = obj_query_openGL_pose[:, 2, :3]  # Mx3 # (translation components) -  It assumes that the 3D location is found in the third column of the pose matrices.
+        obj_template_openGL_locations = self.obj_template_openGL_poses[:, 2, :3]  # Nx3 # (translation components)
 
         # find the nearest template
+        # It computes the pairwise distances between each query pose location and each template pose location using cdist.
         distances = cdist(obj_query_openGL_location, obj_template_openGL_locations)
         best_index_in_pose_distribution = np.argmin(distances, axis=-1)  # M
         if self.return_inplane:
@@ -280,7 +281,7 @@ class NearestTemplateFinder(object):
                 inplanes[idx] = compute_inplane(rot_query_openCV, rot_template_openCV)
             return self.avail_index[best_index_in_pose_distribution], inplanes
         else:
-            return self.avail_index[best_index_in_pose_distribution]
+            return self.avail_index[best_index_in_pose_distribution] # self.avail_index is just the index from 0 to 42
     
     def search_nearest_query(self, obj_query_pose):
         """
