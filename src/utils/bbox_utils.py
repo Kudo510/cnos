@@ -123,7 +123,7 @@ class CropResizePad:
                 image.unsqueeze(0), scale_factor=self.target_h / image.shape[1]
             )[0]
             processed_images.append(image)
-        return torch.stack(processed_images)
+        return torch.stack(processed_images) # so we got num_proposals, 3,224,224 afterwards- basically stacks of proposals
 
 
 def xyxy_to_xywh(bbox):

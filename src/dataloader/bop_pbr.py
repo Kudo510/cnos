@@ -238,8 +238,8 @@ class BOPTemplatePBR(BaseBOP):
         templates = torch.stack(templates).permute(0, 3, 1, 2)
         boxes = torch.tensor(np.array(boxes))
         templates_croped = self.proposal_processor(images=templates, boxes=boxes)
-        # return {"templates": self.rgb_transform(templates_croped)} # to normalize the template # 
-        return {"templates": templates_croped} # to normalize the template # 
+        return {"templates": self.rgb_transform(templates_croped)} # to normalize the template # 
+        # return {"templates": templates_croped} # to normalize the template # 
         ### see at the end we get 42 templates for each idx/object id - we will get 42*7 as df with all information s.t scnene id, frame id, poses for the tempaltes. for icbin we only have 2 indices , cos we have only 2 cad models/object in icbin
 
 if __name__ == "__main__":

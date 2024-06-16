@@ -11,8 +11,8 @@ class Similarity(nn.Module):
         self.metric = metric
         self.chunk_size = chunk_size
 
-    def forward(self, query, reference):
-        query = F.normalize(query, dim=-1)
+    def forward(self, query, reference): # query is stack of proposals # reference is the features from templates
+        query = F.normalize(query, dim=-1) 
         reference = F.normalize(reference, dim=-1)
         similarity = F.cosine_similarity(query, reference, dim=-1)
         return similarity.clamp(min=0.0, max=1.0)
