@@ -33,7 +33,7 @@ class BOPTemplatePBR(BaseBOP):
         processing_config,
         level_templates,
         pose_distribution,
-        split="train_pbr",
+        split="test", # train_pbr,
         min_visib_fract=0.8,
         max_num_scenes=10,  # not need to search all scenes since it is slow
         max_num_frames=1000,  # not need to search all frames since it is slow
@@ -85,7 +85,8 @@ class BOPTemplatePBR(BaseBOP):
             "obj_poses": [],
         }
         logging.info(f"Loading metaData for split {self.split}")
-        metaData_path = osp.join(self.root_dir, f"{self.split}_metaData.csv") # load the train_pbr_metadata.csv file
+        # metaData_path = osp.join(self.root_dir, f"{self.split}_metaData.csv") # load the train_pbr_metadata.csv file
+        metaData_path = osp.join("cnos_analysis", f"{self.split}_metaData.csv") # load the train_pbr_metadata.csv file 
         if reset_metaData:
             for scene_path in tqdm(self.list_scenes, desc="Loading metaData"): # load only first 10 scene of the dataset
                 scene_id = scene_path.split("/")[-1]
@@ -155,7 +156,7 @@ class BOPTemplatePBR(BaseBOP):
             return_inplane=False,
         )
         # metaData_path = osp.join(self.root_dir, f"{self.split}_processed_metaData.json") # the train_pbtMeta
-        metaData_path = osp.join("cnos_analysis", f"{self.split}_processed_metaData.json")
+        metaData_path = osp.join("cnos_analysis", f"{self.split}_processed_metaData.csv") ## acthung csv not json- we want to update the new csv
         if reset_metaData or not osp.exists(metaData_path): # reset_metaData = True
             self.load_metaData(reset_metaData=reset_metaData) # self.metaData now is the data frame for the metascv file
             # keep only objects having visib_fract > self.processing_config.min_visib_fract
@@ -187,8 +188,6 @@ class BOPTemplatePBR(BaseBOP):
                 idx_keep = finder.search_nearest_query(obj_poses) # idx_keep is 42 poses- so basically we are getting the indices of the frame_id, whose poses are most similar to the 42 templates poses
                 # update metaData
                 selected_index.extend(selected_index_obj[idx_keep])
-
-
             self.metaData = self.metaData.iloc[selected_index]
             logging.info(
                 f"Finish processing metaData from {init_size} to {len(self.metaData)}"
@@ -196,6 +195,8 @@ class BOPTemplatePBR(BaseBOP):
             self.metaData = self.metaData.reset_index(drop=True) ## self.metaData. is now for icbin will have shape of 84, 7 - 84 cos 42 templates for the 2 objects in icbin , 7 ist for all the infod s.t scene_id, frame_id ,etc
             # self.metaData = casting_format_to_save_json(self.metaData)
             self.metaData.to_csv(metaData_path)
+            
+
         else:
             self.metaData = pd.read_csv(metaData_path).reset_index(drop=True)
 
@@ -206,6 +207,7 @@ class BOPTemplatePBR(BaseBOP):
             idx * len(self.template_poses),
             (idx + 1) * len(self.template_poses),
         ) # basically the range is 42*idx to 42*(id+1) - so we have 42 indices for the indx_range
+
         for i in idx_range:
             rgb_path = self.metaData.iloc[i].rgb_path
             obj_id = self.metaData.iloc[i].obj_id
@@ -236,7 +238,8 @@ class BOPTemplatePBR(BaseBOP):
         templates = torch.stack(templates).permute(0, 3, 1, 2)
         boxes = torch.tensor(np.array(boxes))
         templates_croped = self.proposal_processor(images=templates, boxes=boxes)
-        return {"templates": self.rgb_transform(templates_croped)} # to normalize the template # 
+        # return {"templates": self.rgb_transform(templates_croped)} # to normalize the template # 
+        return {"templates": templates_croped} # to normalize the template # 
         ### see at the end we get 42 templates for each idx/object id - we will get 42*7 as df with all information s.t scnene id, frame id, poses for the tempaltes. for icbin we only have 2 indices , cos we have only 2 cad models/object in icbin
 
 if __name__ == "__main__":
