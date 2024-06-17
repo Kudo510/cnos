@@ -157,9 +157,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--template_dir", nargs="?", help="Path to root directory of the template")
     parser.add_argument("--rgb_path", nargs="?", help="Path to RGB image")
-    parser.add_argument("--num_max_dets", nargs="?", default=1, type=int, help="Number of max detections")
+    parser.add_argument("--num_max_dets", nargs="?", default=20, type=int, help="Number of max detections")
     parser.add_argument("--confg_threshold", nargs="?", default=0.5, type=float, help="Confidence threshold")
-    parser.add_argument("--stability_score_thresh", nargs="?", default=0.97, type=float, help="stability_score_thresh of SAM")
+    parser.add_argument("--stability_score_thresh", nargs="?", default=0.5, type=float, help="stability_score_thresh of SAM")
     args = parser.parse_args()
 
     os.makedirs(f"{args.template_dir}/cnos_results", exist_ok=True)
