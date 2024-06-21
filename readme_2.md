@@ -31,6 +31,26 @@ Visulizing the results
     # visulize with score, value
     python -m src.scripts.visualize_detectron2 dataset_name=$DATASET_NAME input_file=$INPUT_FILE output_dir=$OUTPUT_DIR
 
+Testing on custom image
+    export CAD_PATH=datasets/bop23_challenge/datasets/xyz/models/obj_000006.ply
+    export RGB_PATH=datasets/bop23_challenge/datasets/xyz/banjinjian/000001/rgb/000004.png
+    export OUTPUT_DIR=./tmp/custom_dataset
+
+    # render templates from cad models
+    bash src/scripts/render_custom.sh
+
+    bash src/scripts/run_inference_custom.sh
+
+# Testing on dataset xyz
+    export CAD_PATH=datasets/bop23_challenge/datasets/xyz/models/obj_000006.ply
+    export RGB_PATH=datasets/bop23_challenge/datasets/xyz/banjinjian/000001/rgb/000004.png
+    export OUTPUT_DIR=./tmp/custom_dataset
+
+    # render templates from cad models
+    bash src/scripts/render_custom_xyz.sh
+
+    bash src/scripts/run_inference_custom.sh
+
 
 
 
