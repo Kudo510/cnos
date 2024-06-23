@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 import torchvision.transforms as T
 from torchvision.utils import make_grid, save_image
 import pytorch_lightning as pl
@@ -17,27 +18,23 @@ descriptor_size = {
     "dinov2_vitg14": 1536,
 }
 
-class SmallDinov2(nn.Module):
+class SmallDinov2(pl.LightningModule):
     def __init__(self, dinov2_vitl14, num_block=18):
         super().__init__()
         self.dinov2_vitl14 = dinov2_vitl14
 
         # Extract the layers
+        self.num_block = num_block
         self.embedding = self.dinov2_vitl14.patch_embed
-        #self.blocks =  nn.Sequential(*list(self.dinov2_vitl14.blocks)[:19])
-        self.blocks = self.dinov2_vitl14.blocks[:num_block+1]
+        self.blocks = nn.Sequential(*self.dinov2_vitl14.blocks[:self.num_block])
         self.norms = self.dinov2_vitl14.norm
         self.head = self.dinov2_vitl14.head
 
-        self.model = nn.Sequential(
-            self.embedding,
-            self.blocks,
-            self.norms,
-            self.head
-        )
-
     def forward(self, x):
-        x = self.model(x)
+        x = self.embedding(x)
+        x = self.blocks(x)
+        x = self.norms(x)
+        x = self.head(x)
         return x
 
 
@@ -113,7 +110,6 @@ class CustomDINOv2(pl.LightningModule):
             )
             features.cat(feats)
         return features.data
-
 
     @torch.no_grad()
     def forward_cls_token(self, image_np, proposals):
