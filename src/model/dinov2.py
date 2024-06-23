@@ -17,6 +17,29 @@ descriptor_size = {
     "dinov2_vitg14": 1536,
 }
 
+class SmallDinov2(nn.Module):
+    def __init__(self, dinov2_vitl14, num_block=18):
+        super().__init__()
+        self.dinov2_vitl14 = dinov2_vitl14
+
+        # Extract the layers
+        self.embedding = self.dinov2_vitl14.patch_embed
+        #self.blocks =  nn.Sequential(*list(self.dinov2_vitl14.blocks)[:19])
+        self.blocks = self.dinov2_vitl14.blocks[:num_block+1]
+        self.norms = self.dinov2_vitl14.norm
+        self.head = self.dinov2_vitl14.head
+
+        self.model = nn.Sequential(
+            self.embedding,
+            self.blocks,
+            self.norms,
+            self.head
+        )
+
+    def forward(self, x):
+        x = self.model(x)
+        return x
+
 
 class CustomDINOv2(pl.LightningModule):
     def __init__(
