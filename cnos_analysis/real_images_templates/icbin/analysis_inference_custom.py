@@ -86,7 +86,7 @@ def run_inference(template_dir, rgb_path, num_max_dets, conf_threshold, stabilit
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.descriptor_model.model = model.descriptor_model.model.to(device)
-    model.descriptor_model.model.device = device
+    # model.descriptor_model.model.device = device
     # if there is predictor in the model, move it to device
     if hasattr(model.segmentor_model, "predictor"):
         model.segmentor_model.predictor.model = (

@@ -18,25 +18,41 @@ descriptor_size = {
     "dinov2_vitg14": 1536,
 }
 
+
 class SmallDinov2(pl.LightningModule):
-    def __init__(self, dinov2_vitl14, num_block=18):
+    def __init__(
+        self,
+        dinov2_vitl14=None,
+        num_block=50,
+    ):
         super().__init__()
-        self.dinov2_vitl14 = dinov2_vitl14
-
+        # Load the pre-trained model only if it's not provided
+        if dinov2_vitl14 is None:
+            dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
         # Extract the layers
+        
         self.num_block = num_block
-        self.embedding = self.dinov2_vitl14.patch_embed
-        self.blocks = nn.Sequential(*self.dinov2_vitl14.blocks[:self.num_block])
-        self.norms = self.dinov2_vitl14.norm
-        self.head = self.dinov2_vitl14.head
+        self.patch_embed = dinov2_vitl14.patch_embed
+        self.blocks = nn.ModuleList(dinov2_vitl14.blocks[:num_block])
+        self.norm = dinov2_vitl14.norm
+        self.dinov2_vitl14 = dinov2_vitl14
+        self.head = dinov2_vitl14.head
 
-    def forward(self, x):
-        x = self.embedding(x)
-        x = self.blocks(x)
-        x = self.norms(x)
-        x = self.head(x)
-        return x
+    @torch.no_grad()
+    def forward_features(self, x, masks=None):
+        x = self.dinov2_vitl14.prepare_tokens_with_masks(x, masks)
 
+        for blk in self.blocks:
+            x = blk(x)
+
+        x_norm = self.norm(x)
+        return {
+            "x_norm_clstoken": x_norm[:, 0],
+        }
+    @torch.no_grad()
+    def forward(self, *args, **kwargs):
+        ret = self.forward_features(*args, **kwargs)
+        return self.head(ret["x_norm_clstoken"])
 
 class CustomDINOv2(pl.LightningModule):
     def __init__(
