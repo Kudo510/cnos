@@ -29,24 +29,26 @@ class BOPTemplatePBR(BaseBOP):
     def __init__(
         self,
         root_dir,
+        out_dir,
+        obj_ids, 
         template_dir, # ${machine.root_dir}/datasets/
         processing_config,
         level_templates,
         pose_distribution,
-        split="test", # train_pbr,
+        split="train_pbr", # test
         min_visib_fract=0.8,
         max_num_scenes=10,  # not need to search all scenes since it is slow
         max_num_frames=1000,  # not need to search all frames since it is slow
         **kwargs,
     ):
         self.template_dir = template_dir # './datasets/bop23_challenge/datasets/templates_pyrender/icbin'
-        obj_ids = [
-            int(obj_id[4:])
-            for obj_id in os.listdir(template_dir)
-            if osp.isdir(osp.join(template_dir, obj_id))
-        ] # all object in the template_dir folder - here [1,2]
-        obj_ids = sorted(obj_ids)
-        logging.info(f"Found {obj_ids} objects in {self.template_dir}")
+        # obj_ids = [
+        #     int(obj_id[4:])
+        #     for obj_id in os.listdir(template_dir)
+        #     if osp.isdir(osp.join(template_dir, obj_id))
+        # ] # all object in the template_dir folder - here [1,2]
+        # obj_ids = sorted(obj_ids)
+        # logging.info(f"Found {obj_ids} objects in {self.template_dir}")
         self.obj_ids = obj_ids # all the scene
 
         self.level_templates = level_templates # 0
@@ -55,6 +57,7 @@ class BOPTemplatePBR(BaseBOP):
         self.processing_config = processing_config #{'image_size': 224, 'max_num_scenes': 10, 'max_num_frames': 500, 'min_visib_fract': 0.8, 'num_references': 200, 'use_visible_mask': True}}
         self.root_dir = root_dir # ./datasets/bop23_challenge/datasets/icbin
         self.split = split # train_pbr
+        self.out_dir = out_dir
         self.load_list_scene(split=split)
         logging.info(
             f"Found {len(self.list_scenes)} scene, but using only {max_num_scenes} scene for faster runtime"
@@ -86,7 +89,7 @@ class BOPTemplatePBR(BaseBOP):
         }
         logging.info(f"Loading metaData for split {self.split}")
         # metaData_path = osp.join(self.root_dir, f"{self.split}_metaData.csv") # load the train_pbr_metadata.csv file
-        metaData_path = osp.join("cnos_analysis", f"{self.split}_metaData.csv") # load the train_pbr_metadata.csv file 
+        metaData_path = osp.join(self.out_dir, f"{self.split}_metaData.csv") # load the train_pbr_metadata.csv file 
         if reset_metaData:
             for scene_path in tqdm(self.list_scenes, desc="Loading metaData"): # load only first 10 scene of the dataset
                 scene_id = scene_path.split("/")[-1]
@@ -156,7 +159,7 @@ class BOPTemplatePBR(BaseBOP):
             return_inplane=False,
         )
         # metaData_path = osp.join(self.root_dir, f"{self.split}_processed_metaData.json") # the train_pbtMeta
-        metaData_path = osp.join("cnos_analysis", f"{self.split}_processed_metaData.csv") ## acthung csv not json- we want to update the new csv
+        metaData_path = osp.join(self.out_dir, f"{self.split}_processed_metaData.csv") ## acthung csv not json- we want to update the new csv
         if reset_metaData or not osp.exists(metaData_path): # reset_metaData = True
             self.load_metaData(reset_metaData=reset_metaData) # self.metaData now is the data frame for the metascv file
             # keep only objects having visib_fract > self.processing_config.min_visib_fract
