@@ -1,7 +1,7 @@
 Download all dataset
     python -m src.scripts.download_bop23
 Render templates with pyrender for all dataset
-    python -m src.scripts.render_template_with_pyrender level=0 # 0 is for 42 templates
+    python -m src.scripts.render_template_with_pyrender level=1 # 0 is for 42 templates
 download model weights of SAM and Fast SAM
     python -m src.scripts.download_sam
     python -m src.scripts.download_fastsam
