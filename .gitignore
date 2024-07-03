@@ -173,3 +173,4 @@ cython_debug/
 
 cnos_analysis/real_images_templates/
 cnos_analysis/synthetic_images_templates_162/
+foundpose_analysis/
