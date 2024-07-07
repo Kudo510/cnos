@@ -23,7 +23,7 @@ class SmallDinov2(pl.LightningModule):
     def __init__(
         self,
         dinov2_vitl14=None,
-        num_block=50,
+        num_block=23,
     ):
         super().__init__()
         # Load the pre-trained model only if it's not provided
