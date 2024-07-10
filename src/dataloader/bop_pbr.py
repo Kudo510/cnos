@@ -270,7 +270,7 @@ if __name__ == "__main__":
         root_dir="/gpfsscratch/rech/tvi/uyb58rn/datasets/bop23_challenge/datasets/lmo",
         template_dir="/gpfsscratch/rech/tvi/uyb58rn/datasets/bop23_challenge/datasets/templates_pyrender/lmo",
         obj_ids=None,
-        level_templates=1,
+        level_templates=0,
         pose_distribution="all",
         processing_config=processing_config,
     )
