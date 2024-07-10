@@ -159,10 +159,6 @@ def crop_feature_extraction(crop_rgb, dino_model, device):
     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
 
     scaled_padded_crop_rgb = resize_and_pad_image(normalized_crop_rgb).unsqueeze(0) # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
-    print("scaled_padded_crop_rgb.shape", scaled_padded_crop_rgb.shape) 
-    plt.imshow(torch.tensor(scaled_padded_crop_rgb).squeeze().permute(1,2,0))
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
 
     # Mask out the crop by clampping at 0,1 for resize image with size of (3, 30, 30)
     resized_crop = resize_and_pad_image(torch.tensor(crop_rgb).permute(2,0,1), target_max=30)
@@ -179,15 +175,8 @@ def crop_feature_extraction(crop_rgb, dino_model, device):
 
     # PCA
     pca = PCA(n_components=256)
-    pca_crop_patches_descriptors = pca.fit_transform(np.array(feature_patches.cpu()))
+    pca_crop_patches_descriptors = pca.fit_transform(np.array(valid_patch_features.cpu()))
     print(pca_crop_patches_descriptors.shape)
-
-    top3_pca = pca_crop_patches_descriptors.reshape(30,30,-1)[:,:,:3]
-    # normalized_image = ((top3_pca - np.min(top3_pca)) / (np.max(top3_pca) - np.min(top3_pca))* 255).astype(np.uint8)
-    normalized_image = ((top3_pca - np.min(top3_pca)) / (np.max(top3_pca) - np.min(top3_pca)))
-    plt.imshow(torch.tensor(normalized_image))
-    plt.axis('off')  
-    plt.show()
 
     return pca_crop_patches_descriptors, num_valid_patches
 
@@ -236,6 +225,7 @@ def calculate_templates_vector(templates_labels, num_clusters = 2048):
 
 def calculate_crop_vector(crop_labels, templates_labels, num_clusters = 2048):
     # For word_i, term frequency = occurences of word_i within the crop / number of occurences of word_i in all templates). 
+    
     # Calculate bag-of-words descriptors of the templates
     all_occurrences_crop = np.bincount(crop_labels, minlength=2048)
 
