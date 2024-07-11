@@ -98,7 +98,7 @@ def templates_feature_extraction(templates, dino_model, num_templates, device):
         ]
     )
 
-    normalized_templates = [rgb_normalize(template).float() for template in templates]
+    normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
     print("normalized_templates shape", normalized_templates[0].shape)
 
@@ -109,8 +109,16 @@ def templates_feature_extraction(templates, dino_model, num_templates, device):
     # Mask out the templates by clampping at 0,1 for resize image with size of (3, 30, 30)
     resized_templates = [resize_and_pad_image(torch.tensor(template).permute(2,0,1), target_max=30)
                          for template in templates]
-    masks = [np.clip(np.sum(np.array(resized_template), axis=0), 0, 1) for resized_template in resized_templates]
+    masks = [np.clip(np.sum(np.array(resized_template), axis=0), 0, 1, dtype="uint8") for resized_template in resized_templates]
     masks = torch.tensor(masks).reshape(num_templates, -1)
+    
+    plt.imshow(resized_templates[0].permute(1,2,0), cmap=plt.cm.gray)
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
+
+    plt.imshow(np.clip(np.sum(np.array(resized_templates[0]), axis=0), 0, 1), cmap=plt.cm.gray)
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
 
     batch_size = 16
     layers_list = list(range(24))
@@ -124,7 +132,7 @@ def templates_feature_extraction(templates, dino_model, num_templates, device):
         with torch.no_grad(): 
             batch_feature = dino_model.module.get_intermediate_layers(
                 batch.to(device), n=layers_list, return_class_token=True
-                )[17][0].reshape(size,-1,1024).cpu()
+                )[18][0].reshape(size,-1,1024).cpu()
         patch_features.append(batch_feature.to('cpu'))
         del batch_feature
     patch_features = torch.cat(patch_features)
@@ -155,23 +163,32 @@ def crop_feature_extraction(crop_rgb, dino_model, device):
             ),
         ]
     )
-    normalized_crop_rgb = rgb_normalize(crop_rgb).float()
+    normalized_crop_rgb = rgb_normalize(crop_rgb/255.0).float()
     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
 
     scaled_padded_crop_rgb = resize_and_pad_image(normalized_crop_rgb).unsqueeze(0) # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
 
     # Mask out the crop by clampping at 0,1 for resize image with size of (3, 30, 30)
     resized_crop = resize_and_pad_image(torch.tensor(crop_rgb).permute(2,0,1), target_max=30)
-    mask = np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1).reshape(-1)
+    mask = np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1, dtype="uint8").reshape(-1)
+
+    plt.imshow(resized_crop.permute(1,2,0))
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
+
+    # Display the image - 10* see lb the crop is normalized same way as the templates- ready to compare the similarity now
+    plt.imshow(np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1), cmap=plt.cm.gray)
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
 
     # Extract features from 18th layer of Dinov2 
     layers_list = list(range(24))
     torch.cuda.empty_cache()
     with torch.no_grad(): 
-        feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device), n=layers_list, return_class_token=True)[17][0].reshape(-1,1024)
+        feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device), n=layers_list, return_class_token=True)[18][0].reshape(-1,1024)
     del dino_model
 
-    num_valid_patches, valid_patch_features = filter_out_invalid_templates(feature_patches, torch.tensor(mask))
+    num_valid_patches, valid_patch_features = filter_out_invalid_templates(feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
 
     # PCA
     pca = PCA(n_components=256)
