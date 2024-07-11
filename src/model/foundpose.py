@@ -202,7 +202,7 @@ def kmeans(pca_patches_descriptors, ncentroids = 2048, niter = 20, verbose = Tru
     # https://github.com/facebookresearch/faiss/wiki/Faiss-building-blocks:-clustering,-PCA,-quantization
 
     d = pca_patches_descriptors.shape[1]
-    kmeans = faiss.Kmeans(d, ncentroids, niter=niter, verbose=verbose, gpu=True)
+    kmeans = faiss.Kmeans(d, ncentroids, niter=niter, verbose=verbose, gpu=True, seed=5)
     kmeans.train(pca_patches_descriptors)
     return kmeans
 
