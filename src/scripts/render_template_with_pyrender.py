@@ -51,7 +51,7 @@ def call_pyrender(
 )
 def render(cfg: DictConfig) -> None:
     OmegaConf.set_struct(cfg, False)
-    root_save_dir = osp.join(cfg.data.root_dir, "icbin_real_templates_pyrender")
+    root_save_dir = osp.join(cfg.data.root_dir, "ycbv_synthetics_templates_pyrender")
     template_poses = get_obj_poses_from_template_level(  # here load the predefined pose from  the file already src/poses/predefined_poses/cam_poses_level0.npy
     # just copy the conent of the file to the template pose. it has 42 poses with different R, t
         level=cfg.level, pose_distribution="all" #level = 2
@@ -61,10 +61,10 @@ def render(cfg: DictConfig) -> None:
     for dataset_name in [
         # "tless",
         # "tudl",
-        "icbin",
+        # "icbin",
         # "itodd",
         # "hb",
-        # "ycbv",
+        "ycbv",
         # "lmo",
     ]:
         dataset_save_dir = osp.join(root_save_dir, dataset_name) # ...templates_pyrender/dataset_name
@@ -76,7 +76,7 @@ def render(cfg: DictConfig) -> None:
         if dataset_name in ["tless"]:
             cad_dir = os.path.join(cfg.data.root_dir, dataset_name, "models/models_cad")
         else:
-            cad_dir = os.path.join(cfg.data.root_dir, dataset_name, "models/models_eval") # change here to models_eval to render from real 3d models
+            cad_dir = os.path.join(cfg.data.root_dir, dataset_name, "models/models") ## change here to models_eval to render from real 3d models
         cad_paths = []
         output_dirs = []
         object_ids = sorted(

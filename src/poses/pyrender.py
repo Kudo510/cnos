@@ -67,7 +67,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("gpus_devices", nargs="?", help="GPU devices")
     parser.add_argument("disable_output", nargs="?", help="Disable output of blender")
-    parser.add_argument("light_itensity", nargs="?", type=float, default=0.6, help="Light itensity")
+    parser.add_argument("light_itensity", nargs="?", type=float, default=1, help="Light itensity")
     parser.add_argument("radius", nargs="?", type=float, default=1, help="Distance from camera to object")
     args = parser.parse_args()
     print(args)

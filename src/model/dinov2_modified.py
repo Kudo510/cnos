@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 import torchvision.transforms as T
 from torchvision.utils import make_grid, save_image
 import pytorch_lightning as pl
@@ -17,6 +18,41 @@ descriptor_size = {
     "dinov2_vitg14": 1536,
 }
 
+
+class SmallDinov2(pl.LightningModule):
+    def __init__(
+        self,
+        dinov2_vitl14=None,
+        num_block=23,
+    ):
+        super().__init__()
+        # Load the pre-trained model only if it's not provided
+        if dinov2_vitl14 is None:
+            dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
+        # Extract the layers
+        
+        self.num_block = num_block
+        self.patch_embed = dinov2_vitl14.patch_embed
+        self.blocks = nn.ModuleList(dinov2_vitl14.blocks[:num_block])
+        self.norm = dinov2_vitl14.norm
+        self.dinov2_vitl14 = dinov2_vitl14
+        self.head = dinov2_vitl14.head
+
+    @torch.no_grad()
+    def forward_features(self, x, masks=None):
+        x = self.dinov2_vitl14.prepare_tokens_with_masks(x, masks)
+
+        for blk in self.blocks:
+            x = blk(x)
+
+        x_norm = self.norm(x)
+        return {
+            "x_norm_clstoken": x_norm[:, 0],
+        }
+    @torch.no_grad()
+    def forward(self, *args, **kwargs):
+        ret = self.forward_features(*args, **kwargs)
+        return self.head(ret["x_norm_clstoken"])
 
 class CustomDINOv2(pl.LightningModule):
     def __init__(
@@ -65,12 +101,12 @@ class CustomDINOv2(pl.LightningModule):
         masked_rgbs = rgbs * masks.unsqueeze(1)
         processed_masked_rgbs = self.rgb_proposal_processor(
             masked_rgbs, boxes
-        )  # [N, 3, target_size, target_size]
-        return processed_masked_rgbs
+        )  # [num_proposals, 3, 224, 224]
+        return processed_masked_rgbs # # [num_proposals, 3, 224, 224] - bascially we got the stack of proposals image (they are already resized and scaled)
 
     @torch.no_grad()
     def compute_features(self, images, token_name):
-        if token_name == "x_norm_clstoken":
+        if token_name == "x_norm_clstoken": #our case
             if images.shape[0] > self.chunk_size:
                 features = self.forward_by_chunk(images)
             else:
@@ -80,7 +116,7 @@ class CustomDINOv2(pl.LightningModule):
         return features
 
     @torch.no_grad()
-    def forward_by_chunk(self, processed_rgbs):
+    def forward_by_chunk(self, processed_rgbs): # processed_rgbs [num_proposals, 3, 224, 224]
         batch_rgbs = BatchedData(batch_size=self.chunk_size, data=processed_rgbs)
         del processed_rgbs  # free memory
         features = BatchedData(batch_size=self.chunk_size)
@@ -91,14 +127,14 @@ class CustomDINOv2(pl.LightningModule):
             features.cat(feats)
         return features.data
 
-
     @torch.no_grad()
     def forward_cls_token(self, image_np, proposals):
         processed_rgbs = self.process_rgb_proposals(
             image_np, proposals.masks, proposals.boxes
-        )
+        ) #[num_proposals, 3, 224, 224]
         return self.forward_by_chunk(processed_rgbs)
 
     @torch.no_grad()
     def forward(self, image_np, proposals):
         return self.forward_cls_token(image_np, proposals)
+

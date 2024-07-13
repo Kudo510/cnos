@@ -1,3 +1,10 @@
+# Files
+    foundpose_3.ipynb - full pipeline for foundpose 
+    foundpose_check_code.ipynb - check feaures extraction from dinov2d
+    cnos_analysis_3.ipynb - code for rendering using Blenderproc in cnos
+    cnos_analysis_4.ipynb - code for checking cnos code for mutiple objects - from 2 objects to see if the features work like top images are from correct object
+
+# Run
 Download all dataset
     python -m src.scripts.download_bop23
 Render templates with pyrender for all dataset

@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 import logging
 import numpy as np
 from torchvision.utils import make_grid, save_image
-from src.model.utils import BatchedData
+
 from copy import deepcopy
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
@@ -18,7 +18,7 @@ from src.model.loss import PairwiseSimilarity, Similarity
 from torchvision.io import read_image
 
 from src.utils.bbox_utils import CropResizePad, CustomResizeLongestSide
-
+from src.model.utils import BatchedData
 
 class SmallDinov2(pl.LightningModule):
     def __init__(
@@ -191,7 +191,7 @@ def crop_feature_extraction(crop_rgb, dino_model, device):
     num_valid_patches, valid_patch_features = filter_out_invalid_templates(feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
 
     # PCA
-    pca = PCA(n_components=256)
+    pca = PCA(n_components=256, random_state=5)
     pca_crop_patches_descriptors = pca.fit_transform(np.array(valid_patch_features.cpu()))
     print(pca_crop_patches_descriptors.shape)
 
@@ -260,9 +260,23 @@ def calculate_crop_vector(crop_labels, templates_labels, num_clusters = 2048):
     return torch.tensor(crop_vector).view(1,-1) # Goal having features size (1,2048)
 
 
-def calculate_similarity(crop_rgb, feature_decriptors, ref_features, metric, dataset, synthetic=False):
+def calculate_similarity(crop_rgb, query_features, ref_features, templates, synthetic=False):
+    '''
+    feature_decriptors: num_proposal, features_dim - here 1,1024
+    ref_features : num_templates, features_dim - here 42, 1024
+    goal convert both inputs to num_proposal, num_templates, features_dim
+    '''
+    num_proposals = query_features.shape[0] # Here = 1 for 1 crop
+    num_obj = 1
+    num_templates = ref_features.shape[0]
+    queries = query_features.clone().unsqueeze(1).repeat(1, num_templates, 1) # num_proposal/N_query, num_templates, features_dim
+    references = ref_features.clone().unsqueeze(0).repeat(num_proposals, 1, 1)  # num_proposals, num_templates, features_dim
+    queries = F.normalize(queries, dim=-1)
+    references = F.normalize(references, dim=-1)
+
+    scores = F.cosine_similarity(queries, references, dim=-1) # num_proposals, num_templates
+
     # get scores per proposal
-    scores = metric(feature_decriptors[:, None, :], ref_features[None, :, :]) # should get  # N_proposals x N_objects x N_templates -get only 1,42 as num_prosals*num_templates instead
     score_per_detection, similar_template_indices = torch.topk(scores, k=5, dim=-1) # get top 5 most similar templates
     # get the final confidence score
     score_per_detection = torch.mean(
@@ -272,13 +286,8 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features, metric, dat
     similar_scores = scores[:, similar_template_indices[0].to("cpu")]
 
     similar_templates = []
-    for i in range(len(similar_template_indices[0])):
-        if synthetic:
-            img = read_image(f"foundpose_analysis/{dataset}/templates/synthetic_images_templates/{dataset}/train_pbr/obj_{obj_id:06d}_original/{(similar_template_indices[0][i]):06d}.png")            
-        # else:
-        #     img = read_image(f"cnos_analysis/real_images_templates/icbin/obj_000001_original/{(similar_template_indices[0][i]):06d}.png")        
-        similar_templates.append(img)
-    template_images = torch.stack(similar_templates)
+    for idx in similar_template_indices[0]:
+           similar_templates.append(templates[idx])
 
     # Display the crop
     plt.imshow(crop_rgb)
@@ -294,9 +303,9 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features, metric, dat
     columns = 3
     rows = 2
 
-    for index in range(len(template_images)):
+    for index, template in enumerate(similar_templates):
         fig.add_subplot(rows, columns, index + 1)
-        img = template_images[index].permute(1, 2, 0)
+        img = template # transpose(1, 2, 0)
         plt.imshow(img)
         plt.axis('off')
         plt.title(f'Top Template {index + 1}')

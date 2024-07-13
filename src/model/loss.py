@@ -25,10 +25,21 @@ class PairwiseSimilarity(nn.Module):
         self.chunk_size = chunk_size
 
     def forward(self, query, reference):
+        '''
+        E.g for ycbv we have 21 objects
+        query shape: (56, 1024) = num_proposal/N_query, features_dim
+        reference shape: (21, 42, 1024) = num_obj, num_templates, features_dim
+        goal to convert to 
+            query shape : num_proposal/N_query, num_templates, features_dim
+            reference shape: size of N_query, num_obj, num_templates, features_dim
+        Then for each obj_id - normalize and compare the cosine simlarity of 2 vector N_query, num_templates, features_dim- return N_query, num_templates
+        Then stack all the similarity of all ob_ids- we get num_obj, N_query, num_templates
+        Permute to get the size of N_query x N_objects x N_templates
+        '''
         N_query = query.shape[0]
         N_objects, N_templates = reference.shape[0], reference.shape[1]
-        references = reference.clone().unsqueeze(0).repeat(N_query, 1, 1, 1)
-        queries = query.clone().unsqueeze(1).repeat(1, N_templates, 1)
+        references = reference.clone().unsqueeze(0).repeat(N_query, 1, 1, 1)  # N_query, num_obj, num_templates, features_dim
+        queries = query.clone().unsqueeze(1).repeat(1, N_templates, 1) # num_proposal/N_query, num_templates, features_dim
         queries = F.normalize(queries, dim=-1)
         references = F.normalize(references, dim=-1)
 
