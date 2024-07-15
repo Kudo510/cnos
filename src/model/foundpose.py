@@ -195,7 +195,7 @@ def crop_feature_extraction(crop_rgb, dino_model, device):
     pca_crop_patches_descriptors = pca.fit_transform(np.array(valid_patch_features.cpu()))
     print(pca_crop_patches_descriptors.shape)
 
-    return pca_crop_patches_descriptors, num_valid_patches
+    return pca_crop_patches_descriptors, num_valid_patches, feature_patches
 
 
 def crop_feature_extraction(crop_rgb, dino_model, device):

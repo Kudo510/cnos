@@ -3,6 +3,8 @@
     foundpose_check_code.ipynb - check feaures extraction from dinov2d
     cnos_analysis_3.ipynb - code for rendering using Blenderproc in cnos
     cnos_analysis_4.ipynb - code for checking cnos code for mutiple objects - from 2 objects to see if the features work like top images are from correct object
+    first_approach_check.ipynb : 
+        Check the first approach by extracting features from dinov2_l14 at the last layer then retrieve the templates with highest score - see if the templates has similar poses to the input  
 
 # Run
 Download all dataset
