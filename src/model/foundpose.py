@@ -198,6 +198,55 @@ def crop_feature_extraction(crop_rgb, dino_model, device):
     return pca_crop_patches_descriptors, num_valid_patches
 
 
+def crop_feature_extraction(crop_rgb, dino_model, device):
+    rgb_normalize = T.Compose(
+        [
+            T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+    inv_rgb_transform = T.Compose(
+        [
+            T.Normalize(
+                mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
+                std=[1 / 0.229, 1 / 0.224, 1 / 0.225],
+            ),
+        ]
+    )
+    normalized_crop_rgb = rgb_normalize(crop_rgb/255.0).float()
+    # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
+
+    scaled_padded_crop_rgb = resize_and_pad_image(normalized_crop_rgb).unsqueeze(0) # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
+
+    # Mask out the crop by clampping at 0,1 for resize image with size of (3, 30, 30)
+    resized_crop = resize_and_pad_image(torch.tensor(crop_rgb).permute(2,0,1), target_max=30)
+    mask = np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1, dtype="uint8").reshape(-1)
+
+    plt.imshow(resized_crop.permute(1,2,0))
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
+
+    # Display the image - 10* see lb the crop is normalized same way as the templates- ready to compare the similarity now
+    plt.imshow(np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1), cmap=plt.cm.gray)
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
+
+    # Extract features from 18th layer of Dinov2 
+    layers_list = list(range(24))
+    torch.cuda.empty_cache()
+    with torch.no_grad(): 
+        feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device), n=layers_list, return_class_token=True)[18][0].reshape(-1,1024)
+    del dino_model
+
+    num_valid_patches, valid_patch_features = filter_out_invalid_templates(feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
+
+    # PCA
+    pca = PCA(n_components=256, random_state=5)
+    pca_crop_patches_descriptors = pca.fit_transform(np.array(valid_patch_features.cpu()))
+    print(pca_crop_patches_descriptors.shape)
+
+    return pca_crop_patches_descriptors, num_valid_patches
+
 def kmeans(pca_patches_descriptors, ncentroids = 2048, niter = 20, verbose = True):
     # https://github.com/facebookresearch/faiss/wiki/Faiss-building-blocks:-clustering,-PCA,-quantization
 
@@ -271,8 +320,10 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
     num_templates = ref_features.shape[0]
     queries = query_features.clone().unsqueeze(1).repeat(1, num_templates, 1) # num_proposal/N_query, num_templates, features_dim
     references = ref_features.clone().unsqueeze(0).repeat(num_proposals, 1, 1)  # num_proposals, num_templates, features_dim
-    queries = F.normalize(queries, dim=-1)
-    references = F.normalize(references, dim=-1)
+    
+    ## ask Evin if we need to normalize- supposingly no 
+    # queries = F.normalize(queries, dim=-1)
+    # references = F.normalize(references, dim=-1)
 
     scores = F.cosine_similarity(queries, references, dim=-1) # num_proposals, num_templates
 
