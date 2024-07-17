@@ -177,20 +177,22 @@ class BOPTemplatePBR(BaseBOP):
                 self.obj_ids, desc="Finding nearest rendering close to template poses" # self.obj_ids is just the obj ide from the models folder- basically zB we have 2 types of obj 00001,00002
             ):
                 selected_index_obj = index_dataframe[self.metaData["obj_id"] == obj_id]
-                # subsample a bit if there are too many frames
-                selected_index_obj = np.random.choice(selected_index_obj, 5000) # list of random 5000 number
-                obj_poses = np.array(
-                    self.metaData.iloc[selected_index_obj].obj_poses.tolist() # shape of obj_poses = 5000,4,4
-                )
-                # normalize translation to have unit norm
-                obj_poses = np.array(obj_poses).reshape(-1, 4, 4)
-                distance = np.linalg.norm(obj_poses[:, :3, 3], axis=1, keepdims=True)
-                # print(distance[:10], distance.shape)
-                obj_poses[:, :3, 3] = obj_poses[:, :3, 3] / distance
+                # print("selected_index_obj", selected_index_obj)
+                if len(selected_index_obj) > 0:
+                    # subsample a bit if there are too many frames
+                    selected_index_obj = np.random.choice(selected_index_obj, 5000) # list of random 5000 number
+                    obj_poses = np.array(
+                        self.metaData.iloc[selected_index_obj].obj_poses.tolist() # shape of obj_poses = 5000,4,4
+                    )
+                    # normalize translation to have unit norm
+                    obj_poses = np.array(obj_poses).reshape(-1, 4, 4)
+                    distance = np.linalg.norm(obj_poses[:, :3, 3], axis=1, keepdims=True)
+                    # print(distance[:10], distance.shape)
+                    obj_poses[:, :3, 3] = obj_poses[:, :3, 3] / distance
 
-                idx_keep = finder.search_nearest_query(obj_poses) # idx_keep is 42 poses- so basically we are getting the indices of the frame_id, whose poses are most similar to the 42 templates poses
-                # update metaData
-                selected_index.extend(selected_index_obj[idx_keep])
+                    idx_keep = finder.search_nearest_query(obj_poses) # idx_keep is 42 poses- so basically we are getting the indices of the frame_id, whose poses are most similar to the 42 templates poses
+                    # update metaData
+                    selected_index.extend(selected_index_obj[idx_keep])
             self.metaData = self.metaData.iloc[selected_index]
             logging.info(
                 f"Finish processing metaData from {init_size} to {len(self.metaData)}"

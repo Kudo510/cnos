@@ -9,6 +9,13 @@
         Extracting fatures from dinov2_l14_reg get the patches features instead then still match the patches descriptor -to get the templates with similar poses
 
     foundpose_BoW_check.ipynb - check BoW code
+# Create templates from train_pbr (BlenderProc) or from test (real images)
+    In cnos_analysis_4.ipynb - output folder will be in foundpose_analysis folder
+    fro real images- use lower templates since we have less images - just 162 are enough I believe
+# Create templates from CAD models 
+    python -m src.scripts.render_template_with_pyrender level=2 # 0 is for 42 templates, 3 for 2562 templates
+    Templates will be save in the folder templates_pyrender
+    10* that [50:450, 150:500, :3] for templates will return better zoomed-in templates - Do that
 
 # Run
 Download all dataset
