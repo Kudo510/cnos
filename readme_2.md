@@ -3,14 +3,18 @@
     foundpose_check_code.ipynb - check feaures extraction from dinov2d
     cnos_analysis_3.ipynb - code for rendering using Blenderproc in cnos
     cnos_analysis_4.ipynb - code for checking cnos code for mutiple objects - from 2 objects to see if the features work like top images are from correct object
-    first_approach_check.ipynb : 
+    approach_first_check.ipynb: 
         Check the first approach by extracting features from dinov2_l14 at the last layer then retrieve the templates with highest score - see if the templates has similar poses to the input  
+    approach_second_check.ipynb: 
+        Extracting fatures from dinov2_l14_reg get the patches features instead then still match the patches descriptor -to get the templates with similar poses
+
+    foundpose_BoW_check.ipynb - check BoW code
 
 # Run
 Download all dataset
     python -m src.scripts.download_bop23
 Render templates with pyrender for all dataset
-    python -m src.scripts.render_template_with_pyrender level=0 # 0 is for 42 templates, 3 for 2562 templates
+    python -m src.scripts.render_template_with_pyrender level=2 # 0 is for 42 templates, 3 for 2562 templates
 download model weights of SAM and Fast SAM
     python -m src.scripts.download_sam
     python -m src.scripts.download_fastsam

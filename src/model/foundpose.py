@@ -145,7 +145,7 @@ def templates_feature_extraction(templates, dino_model, num_templates, device):
     pca_patches_descriptors = pca.fit_transform(np.array(valid_patch_features))
     print("pca_crop_patches_descriptors.shape", pca_patches_descriptors.shape)
 
-    return pca_patches_descriptors, num_valid_patches
+    return pca_patches_descriptors, num_valid_patches, patch_features
 
 
 def crop_feature_extraction(crop_rgb, dino_model, device):
@@ -198,54 +198,54 @@ def crop_feature_extraction(crop_rgb, dino_model, device):
     return pca_crop_patches_descriptors, num_valid_patches, feature_patches
 
 
-def crop_feature_extraction(crop_rgb, dino_model, device):
-    rgb_normalize = T.Compose(
-        [
-            T.ToTensor(),
-            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ]
-    )
-    inv_rgb_transform = T.Compose(
-        [
-            T.Normalize(
-                mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
-                std=[1 / 0.229, 1 / 0.224, 1 / 0.225],
-            ),
-        ]
-    )
-    normalized_crop_rgb = rgb_normalize(crop_rgb/255.0).float()
-    # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
+# def crop_feature_extraction(crop_rgb, dino_model, device):
+#     rgb_normalize = T.Compose(
+#         [
+#             T.ToTensor(),
+#             T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#         ]
+#     )
+#     inv_rgb_transform = T.Compose(
+#         [
+#             T.Normalize(
+#                 mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
+#                 std=[1 / 0.229, 1 / 0.224, 1 / 0.225],
+#             ),
+#         ]
+#     )
+#     normalized_crop_rgb = rgb_normalize(crop_rgb/255.0).float()
+#     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
 
-    scaled_padded_crop_rgb = resize_and_pad_image(normalized_crop_rgb).unsqueeze(0) # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
+#     scaled_padded_crop_rgb = resize_and_pad_image(normalized_crop_rgb).unsqueeze(0) # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
 
-    # Mask out the crop by clampping at 0,1 for resize image with size of (3, 30, 30)
-    resized_crop = resize_and_pad_image(torch.tensor(crop_rgb).permute(2,0,1), target_max=30)
-    mask = np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1, dtype="uint8").reshape(-1)
+#     # Mask out the crop by clampping at 0,1 for resize image with size of (3, 30, 30)
+#     resized_crop = resize_and_pad_image(torch.tensor(crop_rgb).permute(2,0,1), target_max=30)
+#     mask = np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1, dtype="uint8").reshape(-1)
 
-    plt.imshow(resized_crop.permute(1,2,0))
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+#     plt.imshow(resized_crop.permute(1,2,0))
+#     plt.axis('off')  # Optional: Turn off the axis
+#     plt.show()
 
-    # Display the image - 10* see lb the crop is normalized same way as the templates- ready to compare the similarity now
-    plt.imshow(np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1), cmap=plt.cm.gray)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+#     # Display the image - 10* see lb the crop is normalized same way as the templates- ready to compare the similarity now
+#     plt.imshow(np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1), cmap=plt.cm.gray)
+#     plt.axis('off')  # Optional: Turn off the axis
+#     plt.show()
 
-    # Extract features from 18th layer of Dinov2 
-    layers_list = list(range(24))
-    torch.cuda.empty_cache()
-    with torch.no_grad(): 
-        feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device), n=layers_list, return_class_token=True)[18][0].reshape(-1,1024)
-    del dino_model
+#     # Extract features from 18th layer of Dinov2 
+#     layers_list = list(range(24))
+#     torch.cuda.empty_cache()
+#     with torch.no_grad(): 
+#         feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device), n=layers_list, return_class_token=True)[18][0].reshape(-1,1024)
+#     del dino_model
 
-    num_valid_patches, valid_patch_features = filter_out_invalid_templates(feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
+#     num_valid_patches, valid_patch_features = filter_out_invalid_templates(feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
 
-    # PCA
-    pca = PCA(n_components=256, random_state=5)
-    pca_crop_patches_descriptors = pca.fit_transform(np.array(valid_patch_features.cpu()))
-    print(pca_crop_patches_descriptors.shape)
+#     # PCA
+#     pca = PCA(n_components=256, random_state=5)
+#     pca_crop_patches_descriptors = pca.fit_transform(np.array(valid_patch_features.cpu()))
+#     print(pca_crop_patches_descriptors.shape)
 
-    return pca_crop_patches_descriptors, num_valid_patches
+#     return pca_crop_patches_descriptors, num_valid_patches
 
 def kmeans(pca_patches_descriptors, ncentroids = 2048, niter = 20, verbose = True):
     # https://github.com/facebookresearch/faiss/wiki/Faiss-building-blocks:-clustering,-PCA,-quantization
@@ -267,26 +267,51 @@ def calculate_templates_labels(num_valid_patches, kmeans, pca_patches_descriptor
         start_idx = end_idx
     return templates_labels
 
-def calculate_templates_vector(templates_labels, num_clusters = 2048):
-    # Calculate bag-of-words descriptors of the templates
 
-    templates_vector = list()
-    all_occurrences = [np.bincount(templates_label, minlength=2048) for templates_label in templates_labels]
-    ni_array = np.sum(np.array(all_occurrences), axis = 0)
-    N = len(templates_labels) # Number of templates
-    for t in range(len(templates_labels)):
-        template_vector = list()
-        occurrences = np.bincount(templates_labels[t], minlength=2048)
-        for i in range(num_clusters):
-            n_it = occurrences[i]
-            nt = len(templates_labels[t])
-            ni = ni_array[i]
-            if ni==0 or nt==0:
-                print(i)
-            bi = n_it / nt * math.log(N / ni)
-            template_vector.append(bi)
-        templates_vector.append(np.array(template_vector))
+def calculate_templates_vector(templates_labels, num_clusters=2048):
+    # Calculate bag-of-words descriptors of the templates
+    N = len(templates_labels)  # Number of templates
+    
+    # Calculate occurrences for all templates
+    all_occurrences = np.array([np.bincount(template_label, minlength=num_clusters) for template_label in templates_labels])
+    
+    # Calculate document frequency (number of templates containing each word)
+    doc_frequency = np.sum(all_occurrences > 0, axis=0)
+    
+    # Calculate IDF (add 1 to avoid division by zero)
+    # idf = np.log(N / (doc_frequency + 1))
+    idf = np.log(N / (doc_frequency + 1))
+    
+    # Calculate TF-IDF for each template
+    templates_vector = []
+    for t, occurrences in enumerate(all_occurrences):
+        nt = len(templates_labels[t])
+        tf = occurrences / nt
+        tfidf = tf * idf
+        templates_vector.append(tfidf)
+    
     return templates_vector
+
+# def calculate_templates_vector(templates_labels, num_clusters = 2048):
+#     # Calculate bag-of-words descriptors of the templates
+
+#     templates_vector = list()
+#     all_occurrences = [np.bincount(templates_label, minlength=2048) for templates_label in templates_labels]
+#     ni_array = np.sum(np.array(all_occurrences), axis = 0)
+#     N = len(templates_labels) # Number of templates
+#     for t in range(len(templates_labels)):
+#         template_vector = list()
+#         occurrences = np.bincount(templates_labels[t], minlength=2048)
+#         for i in range(num_clusters):
+#             n_it = occurrences[i]
+#             nt = len(templates_labels[t])
+#             ni = ni_array[i]
+#             if ni==0 or nt==0:
+#                 print(i)
+#             bi = n_it / nt * math.log(N / ni)
+#             template_vector.append(bi)
+#         templates_vector.append(np.array(template_vector))
+#     return templates_vector
 
 
 def calculate_crop_vector(crop_labels, templates_labels, num_clusters = 2048):
@@ -359,9 +384,101 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
         img = template # transpose(1, 2, 0)
         plt.imshow(img)
         plt.axis('off')
-        plt.title(f'Top Template {index + 1}')
+        plt.title(f'Top Template {similar_template_indices[0][index]}')
 
     plt.tight_layout()
     plt.show()
 
     return
+
+
+# Code for first approach check
+def _resize_and_pad_image(image, target_max=420):
+    # Scale image to 420
+    scale_factor = target_max / torch.max(torch.tensor(image.shape)) # 420/max of x1,y1,x2,y2
+    scaled_image = F.interpolate(image.unsqueeze(0), scale_factor=scale_factor.item())[0] # unsqueeze at  0 - B,C, H, W
+    
+    # Padding 0 to 3, 420, 420
+    original_h, original_w = scaled_image.shape[1:]
+    original_ratio = original_w / original_h
+    target_h, target_w = target_max, target_max
+    target_ratio  = target_w/target_h 
+    if  target_ratio != original_ratio: 
+        padding_top = max((target_h - original_h) // 2, 0)
+        padding_bottom = target_h - original_h - padding_top
+        padding_left = max((target_w - original_w) // 2, 0)
+        padding_right = target_w - original_w - padding_left
+        scaled_padded_image = F.pad(
+        scaled_image, (padding_left, padding_right, padding_top, padding_bottom)
+        )
+    else:
+        scaled_padded_image = scaled_image
+    return scaled_padded_image
+
+
+# Code for first approach check - only use Dinov2 to extract features
+def _templates_feature_extraction(templates, dino_model, num_templates, device):
+    rgb_normalize = T.Compose(
+        [
+            T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+    normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
+    # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
+    print("normalized_templates shape", normalized_templates[0].shape)
+
+    scaled_padded_templates = [_resize_and_pad_image(normalized_template)
+                            for normalized_template in normalized_templates] # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
+    print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
+
+    batch_size = 16
+    layers_list = list(range(24))
+    template_batches = [scaled_padded_templates[i:i+batch_size] for i in range(0, len(scaled_padded_templates), batch_size)]
+    patch_features= list()
+
+    for batch in template_batches:
+        batch = torch.stack(batch)
+        size = batch.shape[0]
+        torch.cuda.empty_cache()
+        with torch.no_grad(): 
+            batch_feature = dino_model.module.get_intermediate_layers(
+                batch.to(device), n=layers_list, return_class_token=True
+                )[18][1][:].reshape(size,-1,1024).cpu()
+        patch_features.append(batch_feature.to('cpu'))
+        del batch_feature
+    patch_features = torch.cat(patch_features)
+    del dino_model
+    return patch_features
+
+
+# Code for first approach check - only use Dinov2 to extract features
+def _crop_feature_extraction(crop_rgb, dino_model, device):
+    rgb_normalize = T.Compose(
+        [
+            T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+    inv_rgb_transform = T.Compose(
+        [
+            T.Normalize(
+                mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
+                std=[1 / 0.229, 1 / 0.224, 1 / 0.225],
+            ),
+        ]
+    )
+    normalized_crop_rgb = rgb_normalize(crop_rgb/255.0).float()
+    # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
+
+    scaled_padded_crop_rgb = _resize_and_pad_image(normalized_crop_rgb).unsqueeze(0) # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
+
+    # Extract features from 18th layer of Dinov2 
+    layers_list = list(range(24))
+    torch.cuda.empty_cache()
+    with torch.no_grad(): 
+        feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device), n=layers_list, return_class_token=True)[18][1].reshape(-1,1024)
+    del dino_model
+
+    return feature_patches

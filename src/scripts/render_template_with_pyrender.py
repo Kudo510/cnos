@@ -51,7 +51,7 @@ def call_pyrender(
 )
 def render(cfg: DictConfig) -> None:
     OmegaConf.set_struct(cfg, False)
-    root_save_dir = osp.join(cfg.data.root_dir, "ycbv_synthetics_templates_pyrender")
+    root_save_dir = osp.join(cfg.data.root_dir, "templates_pyrender") # "ycbv_synthetics_templates_pyrender")
     template_poses = get_obj_poses_from_template_level(  # here load the predefined pose from  the file already src/poses/predefined_poses/cam_poses_level0.npy
     # just copy the conent of the file to the template pose. it has 42 poses with different R, t
         level=cfg.level, pose_distribution="all" #level = 2
@@ -64,8 +64,8 @@ def render(cfg: DictConfig) -> None:
         # "icbin",
         # "itodd",
         # "hb",
-        "ycbv",
-        # "lmo",
+        # "ycbv",
+        "lmo",
     ]:
         dataset_save_dir = osp.join(root_save_dir, dataset_name) # ...templates_pyrender/dataset_name
         logging.info(f"Rendering templates for {dataset_name}")
