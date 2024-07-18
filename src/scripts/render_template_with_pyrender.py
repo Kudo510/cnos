@@ -61,11 +61,11 @@ def render(cfg: DictConfig) -> None:
     for dataset_name in [
         # "tless",
         # "tudl",
-        # "icbin",
+        "icbin",
         # "itodd",
         # "hb",
         # "ycbv",
-        "lmo",
+        # "lmo",
     ]:
         dataset_save_dir = osp.join(root_save_dir, dataset_name) # ...templates_pyrender/dataset_name
         logging.info(f"Rendering templates for {dataset_name}")
