@@ -247,7 +247,7 @@ def crop_feature_extraction(crop_rgb, dino_model, device):
 
 #     return pca_crop_patches_descriptors, num_valid_patches
 
-def kmeans(pca_patches_descriptors, ncentroids = 2048, niter = 20, verbose = True):
+def kmeans_clustering(pca_patches_descriptors, ncentroids = 2048, niter = 20, verbose = True):
     # https://github.com/facebookresearch/faiss/wiki/Faiss-building-blocks:-clustering,-PCA,-quantization
 
     d = pca_patches_descriptors.shape[1]
