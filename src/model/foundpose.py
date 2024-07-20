@@ -404,7 +404,7 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
 
     width = 50
     height = 50
-    fig = plt.figure(figsize=(15, 15))
+    fig = plt.figure(figsize=(7, 7))
     columns = 3
     rows = 2
 
