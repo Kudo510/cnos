@@ -20,6 +20,35 @@ from torchvision.io import read_image
 from src.utils.bbox_utils import CropResizePad, CustomResizeLongestSide
 from src.model.utils import BatchedData
 
+import os, sys
+import shutil
+from tqdm import tqdm
+import time
+from PIL import Image
+import logging
+import os, sys
+import os.path as osp
+from hydra import initialize, compose
+# set level logging
+logging.basicConfig(level=logging.INFO)
+import logging
+import numpy as np
+from hydra.utils import instantiate
+import argparse
+import glob
+from src.utils.bbox_utils import CropResizePad
+from omegaconf import DictConfig, OmegaConf
+from torchvision.utils import save_image
+import torchvision.transforms as T
+from src.model.utils import Detections, convert_npz_to_json
+from src.model.loss import Similarity
+from src.utils.inout import save_json_bop23
+import cv2
+import distinctipy
+from skimage.feature import canny
+from skimage.morphology import binary_dilation
+from segment_anything.utils.amg import rle_to_mask
+
 class SmallDinov2(pl.LightningModule):
     def __init__(
         self,
@@ -268,59 +297,59 @@ def calculate_templates_labels(num_valid_patches, kmeans, pca_patches_descriptor
     return templates_labels
 
 
-def calculate_templates_vector(templates_labels, num_clusters=2048):
-    # Calculate bag-of-words descriptors of the templates
-    N = len(templates_labels)  # Number of templates
-    
-    # Calculate occurrences for all templates
-    all_occurrences = np.array([np.bincount(template_label, minlength=num_clusters) for template_label in templates_labels])
-    
-    # Calculate document frequency (number of templates containing each word)
-    doc_frequency = np.sum(all_occurrences > 0, axis=0)
-    
-    # Calculate IDF (add 1 to avoid division by zero)
-    # idf = np.log(N / (doc_frequency + 1))
-    idf = np.log(N / (doc_frequency + 1))
-    
-    # Calculate TF-IDF for each template
-    templates_vector = []
-    for t, occurrences in enumerate(all_occurrences):
-        nt = len(templates_labels[t])
-        tf = occurrences / nt
-        tfidf = tf * idf
-        templates_vector.append(tfidf)
-    
-    return templates_vector
-
-# def calculate_templates_vector(templates_labels, num_clusters = 2048):
+# def calculate_templates_vector(templates_labels, num_clusters=2048):
 #     # Calculate bag-of-words descriptors of the templates
-
-#     templates_vector = list()
-#     all_occurrences = [np.bincount(templates_label, minlength=2048) for templates_label in templates_labels]
-#     ni_array = np.sum(np.array(all_occurrences), axis = 0)
-#     N = len(templates_labels) # Number of templates
-#     for t in range(len(templates_labels)):
-#         template_vector = list()
-#         occurrences = np.bincount(templates_labels[t], minlength=2048)
-#         for i in range(num_clusters):
-#             n_it = occurrences[i]
-#             nt = len(templates_labels[t])
-#             ni = ni_array[i]
-#             if ni==0 or nt==0:
-#                 print(i)
-#             bi = n_it / nt * math.log(N / ni)
-#             template_vector.append(bi)
-#         templates_vector.append(np.array(template_vector))
+#     N = len(templates_labels)  # Number of templates
+    
+#     # Calculate occurrences for all templates
+#     all_occurrences = np.array([np.bincount(template_label, minlength=num_clusters) for template_label in templates_labels])
+    
+#     # Calculate document frequency (number of templates containing each word)
+#     doc_frequency = np.sum(all_occurrences > 0, axis=0)
+    
+#     # Calculate IDF (add 1 to avoid division by zero)
+#     # idf = np.log(N / (doc_frequency + 1))
+#     idf = np.log(N / (doc_frequency + 1))
+    
+#     # Calculate TF-IDF for each template
+#     templates_vector = []
+#     for t, occurrences in enumerate(all_occurrences):
+#         nt = len(templates_labels[t])
+#         tf = occurrences / nt
+#         tfidf = tf * idf
+#         templates_vector.append(tfidf)
+    
 #     return templates_vector
+
+def calculate_templates_vector(templates_labels, num_clusters = 2048):
+    # Calculate bag-of-words descriptors of the templates
+
+    templates_vector = list()
+    all_occurrences = [np.bincount(templates_label, minlength=2048) for templates_label in templates_labels]
+    ni_array = np.sum(np.array(all_occurrences), axis = 0)
+    N = len(templates_labels) # Number of templates
+    for t in range(len(templates_labels)):
+        template_vector = list()
+        occurrences = np.bincount(templates_labels[t], minlength=2048)
+        for i in range(num_clusters):
+            n_it = occurrences[i]
+            nt = len(templates_labels[t])
+            ni = ni_array[i]
+            if ni==0 or nt==0:
+                print(i)
+            bi = n_it / nt * math.log(N / ni)
+            template_vector.append(bi)
+        templates_vector.append(np.array(template_vector))
+    return templates_vector
 
 
 def calculate_crop_vector(crop_labels, templates_labels, num_clusters = 2048):
     # For word_i, term frequency = occurences of word_i within the crop / number of occurences of word_i in all templates). 
     
     # Calculate bag-of-words descriptors of the templates
-    all_occurrences_crop = np.bincount(crop_labels, minlength=2048)
+    all_occurrences_crop = np.bincount(crop_labels, minlength=num_clusters)
 
-    all_occurrences_templates = [np.bincount(templates_label, minlength=2048) for templates_label in templates_labels]
+    all_occurrences_templates = [np.bincount(templates_label, minlength=num_clusters) for templates_label in templates_labels]
     ni_array = np.sum(np.array(all_occurrences_templates), axis = 0)
     N = len(templates_labels) # Number of templates = 642 
 
@@ -328,8 +357,8 @@ def calculate_crop_vector(crop_labels, templates_labels, num_clusters = 2048):
     for i in range(num_clusters):
         n_it = all_occurrences_crop[i]
         nt = crop_labels.shape[0] # Number of words in crop = 400 
-        ni = ni_array[i]
-        bi = n_it / nt * math.log(N / ni)
+        ni = ni_array[i] + n_it
+        bi = n_it / nt * math.log((N+1) / ni)
         crop_vector.append(bi)
     return torch.tensor(crop_vector).view(1,-1) # Goal having features size (1,2048)
 
@@ -482,3 +511,85 @@ def _crop_feature_extraction(crop_rgb, dino_model, device):
     del dino_model
 
     return feature_patches
+
+def _run_inference(template_dir, rgb_path, num_max_dets, conf_threshold, stability_score_thresh):
+    
+    cfg = compose(config_name='run_inference.yaml')
+    cfg_segmentor = cfg.model.segmentor_model
+    if "fast_sam" in cfg_segmentor._target_:
+        logging.info("Using FastSAM, ignore stability_score_thresh!")
+    else:
+        cfg.model.segmentor_model.stability_score_thresh = stability_score_thresh
+    metric = Similarity()
+    logging.info("Initializing model")
+    model = instantiate(cfg.model)
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.descriptor_model.model = model.descriptor_model.model.to(device)
+    model.descriptor_model.model.device = device
+    # if there is predictor in the model, move it to device
+    if hasattr(model.segmentor_model, "predictor"):
+        model.segmentor_model.predictor.model = (
+            model.segmentor_model.predictor.model.to(device)
+        )
+    else:
+        model.segmentor_model.model.setup_model(device=device, verbose=True)
+    logging.info(f"Moving models to {device} done!")
+        
+    
+    logging.info("Initializing template")
+    template_paths = glob.glob(f"{template_dir}/*.png")
+    boxes, templates = [], []
+    for path in template_paths:
+        image = Image.open(path)
+        boxes.append(image.getbbox())
+
+        image = torch.from_numpy(np.array(image.convert("RGB")) / 255).float()
+        templates.append(image)
+        
+    templates = torch.stack(templates).permute(0, 3, 1, 2)
+    boxes = torch.tensor(np.array(boxes))
+    
+    processing_config = OmegaConf.create(
+        {
+            "image_size": 224,
+        }
+    )
+    proposal_processor = CropResizePad(processing_config.image_size)
+    templates = proposal_processor(images=templates, boxes=boxes).cuda()
+    save_image(templates, f"{template_dir}/cnos_results/templates.png", nrow=7)
+    ref_feats = model.descriptor_model.compute_features(
+                    templates, token_name="x_norm_clstoken"
+                )
+    logging.info(f"Ref feats: {ref_feats.shape}")
+    
+    # run inference
+    rgb = Image.open(rgb_path).convert("RGB")
+    detections = model.segmentor_model.generate_masks(np.array(rgb))
+    detections = Detections(detections)
+    decriptors = model.descriptor_model.forward(np.array(rgb), detections)
+    
+    # get scores per proposal
+    scores = metric(decriptors[:, None, :], ref_feats[None, :, :])
+    score_per_detection = torch.topk(scores, k=5, dim=-1)[0]
+    score_per_detection = torch.mean(
+        score_per_detection, dim=-1
+    )
+    
+    # get top-k detections
+    scores, index = torch.topk(score_per_detection, k=num_max_dets, dim=-1)
+    detections.filter(index)
+    
+    # keep only detections with score > conf_threshold
+    detections.filter(scores>conf_threshold)
+    detections.add_attribute("scores", scores)
+    detections.add_attribute("object_ids", torch.zeros_like(scores))
+        
+    detections.to_numpy()
+    save_path = f"{template_dir}/cnos_results/detection"
+    detections.save_to_file(0, 0, 0, save_path, "custom", return_results=False)
+    detections = convert_npz_to_json(idx=0, list_npz_paths=[save_path+".npz"])
+    save_json_bop23(save_path+".json", detections)
+    # vis_img = visualize(rgb, detections)
+    # vis_img.save(f"{template_dir}/cnos_results/vis.png")
+    plt.imshow(vis_img)

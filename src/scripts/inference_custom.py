@@ -60,9 +60,10 @@ def visualize(rgb, detections, save_path="./tmp/tmp.png"):
         img[mask, 2] = alpha*b + (1 - alpha)*img[mask, 2]   
         img[edge, :] = 255
     
+    out_path = save_path + "/tmp.png"
     img = Image.fromarray(np.uint8(img))
-    img.save(save_path)
-    prediction = Image.open(save_path)
+    img.save(out_path)
+    prediction = Image.open(out_path)
     
     # concat side by side in PIL
     img = np.array(img)
@@ -146,18 +147,28 @@ def run_inference(template_dir, rgb_path, num_max_dets, conf_threshold, stabilit
     detections.add_attribute("object_ids", torch.zeros_like(scores))
         
     detections.to_numpy()
-    save_path = f"{template_dir}/cnos_results/detection"
+
+    if "test" in template_dir:  
+        templates_type = "test"
+    elif "train_pbr" in template_dir:
+        templates_type = "train_pbr"
+    elif "pyrender" in template_dir:
+        templates_type = "pyrender"
+
+    save_path = f"output_cnos_analysis_5/{templates_type}/cnos_results/detection"
+    # Create the directory if it does not exist
+    os.makedirs(save_path, exist_ok=True)
     detections.save_to_file(0, 0, 0, save_path, "custom", return_results=False)
     detections = convert_npz_to_json(idx=0, list_npz_paths=[save_path+".npz"])
-    save_json_bop23(save_path+".json", detections)
-    vis_img = visualize(rgb, detections)
-    vis_img.save(f"{template_dir}/cnos_results/vis.png")
+    save_json_bop23(save_path +".json", detections)
+    vis_img = visualize(rgb, detections, save_path)
+    vis_img.save(f"output_cnos_analysis_5/{templates_type}/cnos_results/vis.png")
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--template_dir", nargs="?", help="Path to root directory of the template")
     parser.add_argument("--rgb_path", nargs="?", help="Path to RGB image")
-    parser.add_argument("--num_max_dets", nargs="?", default=1, type=int, help="Number of max detections")
+    parser.add_argument("--num_max_dets", nargs="?", default=50, type=int, help="Number of max detections")
     parser.add_argument("--confg_threshold", nargs="?", default=0.5, type=float, help="Confidence threshold")
     parser.add_argument("--stability_score_thresh", nargs="?", default=0.97, type=float, help="stability_score_thresh of SAM")
     args = parser.parse_args()
