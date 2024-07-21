@@ -65,7 +65,7 @@ def run_inference(cfg: DictConfig):
     model.ref_dataset = ref_dataset # src.dataloader.bop.BOPTemplatePBR
 
     segmentation_name = cfg.model.segmentor_model._target_.split(".")[-1] # CNOS
-    agg_function = cfg.model.matching_config.aggregation_function #avg_5
+    agg_function = cfg.model.matching_config.aggregation_function #avg_5 means average of top 5
     rendering_type = cfg.model.onboarding_config.rendering_type # pbr
     level_template = cfg.model.onboarding_config.level_templates # 0: which is coarse
     model.name_prediction_file = f"{segmentation_name}_template_{rendering_type}{level_template}_agg{agg_function}_{cfg.dataset_name}" # just the file name

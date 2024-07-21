@@ -41,7 +41,7 @@ Testing on BOP dataset
 
     with SAM + PBR
         python run_inference.py dataset_name=icbin
-
+ 
 Visulizing the results
     export DATASET_NAME=icbin 
     export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin.json
