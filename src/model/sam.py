@@ -53,7 +53,7 @@ class CustomSamAutomaticMaskGenerator(SamAutomaticMaskGenerator):
     def __init__(
         self,
         sam: Sam,
-        min_mask_region_area: int = 0,
+        min_mask_region_area: int = 0, # To remove grains one - set like 100
         points_per_batch: int = 64,
         stability_score_thresh: float = 0.95,
         box_nms_thresh: float = 0.7,
