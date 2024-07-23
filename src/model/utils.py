@@ -43,7 +43,7 @@ def mask_to_rle(binary_mask):
     return rle
 
 
-class BatchedData:
+class BatchedData: # just that it convert a list of data to list of batches of data with length as batch_size
     """
     A structure for storing data in batched format.
     Implements basic filtering and concatenation.
@@ -64,7 +64,7 @@ class BatchedData:
         assert self.batch_size is not None, "batch_size is not defined"
         return self.data[idx * self.batch_size : (idx + 1) * self.batch_size]
 
-    def cat(self, data, dim=0):
+    def cat(self, data, dim=0): # here to stack data
         if len(self.data) == 0:
             self.data = data
         else:
@@ -86,14 +86,14 @@ class Detections:
         if isinstance(data, str):
             data = self.load_from_file(data)
         for key, value in data.items():
-            setattr(self, key, value)
+            setattr(self, key, value) # So now we have self.boxes and self.masks = ... for the class
         self.keys = list(data.keys())
         if "boxes" in self.keys:
-            if isinstance(self.boxes, np.ndarray):
+            if isinstance(self.boxes, np.ndarray): # convert numpy to torch
                 self.to_torch()
             self.boxes = self.boxes.long()
 
-    def remove_very_small_detections(self, config):
+    def remove_very_small_detections(self, config): # after this step only valid boxes, masks are saved, other are filtered out
         # min_box_size: 0.05 # relative to image size 
         # min_mask_size: 3e-4 # relative to image size
         img_area = self.masks.shape[1] * self.masks.shape[2]
