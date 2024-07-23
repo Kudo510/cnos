@@ -59,9 +59,9 @@ class CustomDINOv2(pl.LightningModule):
         2. Mask and crop each proposals
         3. Resize each proposals to predefined longest image size
         """
-        num_proposals = len(masks)
-        rgb = self.rgb_normalize(image_np).to(masks.device).float()
-        rgbs = rgb.unsqueeze(0).repeat(num_proposals, 1, 1, 1)
+        num_proposals = len(masks) # masks shape 55, 480, 640]
+        rgb = self.rgb_normalize(image_np).to(masks.device).float() # nomralize the image - 3,480, 640
+        rgbs = rgb.unsqueeze(0).repeat(num_proposals, 1, 1, 1) # 55, 3, 480, 640
         masked_rgbs = rgbs * masks.unsqueeze(1)
         processed_masked_rgbs = self.rgb_proposal_processor(
             masked_rgbs, boxes

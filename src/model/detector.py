@@ -26,14 +26,13 @@ class CNOS(pl.LightningModule):
         matching_config,
         post_processing_config,
         log_interval,
-        log_dir,
+        log_dir, # './datasets/bop23_challenge/results/cnos_exps'
         **kwargs,
     ):
         # define the network
         super().__init__()
         self.segmentor_model = segmentor_model
         self.descriptor_model = descriptor_model
-
         self.onboarding_config = onboarding_config
         self.matching_config = matching_config
         self.post_processing_config = post_processing_config
@@ -52,7 +51,7 @@ class CNOS(pl.LightningModule):
         )
         logging.info(f"Init CNOS done!")
 
-    def set_reference_objects(self):
+    def set_reference_objects(self): ## to calculate/return features of all templates from dinov2
         os.makedirs(
             osp.join(self.log_dir, f"predictions/{self.dataset_name}"), exist_ok=True
         )
@@ -61,14 +60,14 @@ class CNOS(pl.LightningModule):
         start_time = time.time()
         self.ref_data = {"descriptors": BatchedData(None)}
         descriptors_path = osp.join(self.ref_dataset.template_dir, "descriptors.pth")
-        if self.onboarding_config.rendering_type == "pbr":
+        if self.onboarding_config.rendering_type == "pbr": # not our case
             descriptors_path = descriptors_path.replace(".pth", "_pbr.pth")
         if (
             os.path.exists(descriptors_path)
             and not self.onboarding_config.reset_descriptors # reset_descriptors = False
         ):
             self.ref_data["descriptors"] = torch.load(descriptors_path).to(self.device)
-        else:
+        else: # our case - so computer ref features here
             for idx in tqdm(
                 range(len(self.ref_dataset)),
                 desc="Computing descriptors ...",
@@ -79,11 +78,12 @@ class CNOS(pl.LightningModule):
                 )
                 self.ref_data["descriptors"].append(ref_feats)
 
-            self.ref_data["descriptors"].stack()  # N_objects x descriptor_size
+            ## self.ref_data["descriptors"] is stack of ref_features of all templates
+            self.ref_data["descriptors"].stack()  # N_objects x descriptor_size # 
             self.ref_data["descriptors"] = self.ref_data["descriptors"].data
 
             # save the precomputed features for future use
-            torch.save(self.ref_data["descriptors"], descriptors_path)
+            # torch.save(self.ref_data["descriptors"], descriptors_path)
 
         end_time = time.time()
         logging.info(
@@ -135,12 +135,18 @@ class CNOS(pl.LightningModule):
         pred_scores = score_per_proposal[idx_selected_proposals]
         return idx_selected_proposals, pred_idx_objects, pred_scores 
 
-    def test_step(self, batch, idx):
+    def test_step(self, batch, idx): # idx = 0
+        '''
+        batch is a dict of 'image', 'scene_id', 'frame_id'
+        batch["image"] with shape of batch_size, 3, H,W 
+            here: [1, 3, 480, 640])
+            also 10* batch_size must be 1
+        '''
         if idx == 0:
             os.makedirs(
                 osp.join(
                     self.log_dir,
-                    f"predictions/{self.dataset_name}/{self.name_prediction_file}",
+                    f"predictions/{self.dataset_name}/{self.name_prediction_file}", #self.name_prediction_file: CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin
                 ),
                 exist_ok=True,
             )
@@ -149,24 +155,25 @@ class CNOS(pl.LightningModule):
         assert batch["image"].shape[0] == 1, "Batch size must be 1"
 
         image_np = (
-            self.inv_rgb_transform(batch["image"][0])
+            self.inv_rgb_transform(batch["image"][0]) # just to get the image in the batch - return shape of 3, 480, 640
             .cpu()
             .numpy()
             .transpose(1, 2, 0)
-        )
-        image_np = np.uint8(image_np.clip(0, 1) * 255)
+        ) # 480, 640, 3
+        image_np = np.uint8(image_np.clip(0, 1) * 255) # turn back as normal image
 
         # run propoals
         proposal_stage_start_time = time.time()
-        proposals = self.segmentor_model.generate_masks(image_np)
+        proposals = self.segmentor_model.generate_masks(image_np) # a dict of 'masks', 'boxes')
 
         # init detections with masks and boxes
-        detections = Detections(proposals)
+        detections = Detections(proposals) # just turn the dict to a class thoi- still keys as masks, boxes
         detections.remove_very_small_detections(
             config=self.post_processing_config.mask_post_processing
         )
         # compute descriptors
-        query_decriptors = self.descriptor_model(image_np, detections)
+        # Use image_np, to conver the bboxes as well as the masks to size of the input 
+        query_decriptors = self.descriptor_model(image_np, detections) # shape as 56 ,1024 as number of proposals, 1024 as fatures dim from Dinov2
         proposal_stage_end_time = time.time()
 
         # matching descriptors
@@ -219,6 +226,135 @@ class CNOS(pl.LightningModule):
         return 0
 
     def test_epoch_end(self, outputs):
+        if self.global_rank == 0:  # only rank 0 process
+            # can use self.all_gather to gather results from all processes
+            # but it is simpler just load the results from files so no file is missing
+            result_paths = sorted(
+                glob.glob(
+                    osp.join(
+                        self.log_dir,
+                        f"predictions/{self.dataset_name}/{self.name_prediction_file}/*.npz",
+                    )
+                )
+            )
+            result_paths = sorted(
+                [path for path in result_paths if "runtime" not in path]
+            )
+            num_workers = 10
+            logging.info(f"Converting npz to json requires {num_workers} workers ...")
+            pool = multiprocessing.Pool(processes=num_workers)
+            convert_npz_to_json_with_idx = partial(
+                convert_npz_to_json,
+                list_npz_paths=result_paths,
+            )
+            detections = list(
+                tqdm(
+                    pool.imap_unordered(
+                        convert_npz_to_json_with_idx, range(len(result_paths))
+                    ),
+                    total=len(result_paths),
+                    desc="Converting npz to json",
+                )
+            )
+            formatted_detections = []
+            for detection in tqdm(detections, desc="Loading results ..."):
+                formatted_detections.extend(detection)
+
+            detections_path = f"{self.log_dir}/{self.name_prediction_file}.json"
+            save_json_bop23(detections_path, formatted_detections)
+            logging.info(f"Saved predictions to {detections_path}")
+
+    def custom_test_step(self, batch, idx): # just remove 0 zB at batch["image"][0]  # idx = 0
+        '''
+        batch is a dict of 'image', 'scene_id', 'frame_id'
+        batch["image"] with shape of batch_size, 3, H,W 
+            here: [1, 3, 480, 640])
+            also 10* batch_size must be 1
+        '''
+        if idx == 0:
+            os.makedirs(
+                osp.join(
+                    self.log_dir,
+                    f"predictions/{self.dataset_name}/{self.name_prediction_file}", #self.name_prediction_file: CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin
+
+                ),
+                exist_ok=True,
+            )
+            self.set_reference_objects()
+            self.move_to_device()
+
+        image_np = (
+            self.inv_rgb_transform(batch["image"]) # just to get the image in the batch - return shape of 3, 480, 640
+            .cpu()
+            .numpy()
+            .transpose(1, 2, 0)
+        ) # 480, 640, 3
+        image_np = np.uint8(image_np.clip(0, 1) * 255) # turn back as normal image
+
+        # run propoals
+        proposal_stage_start_time = time.time()
+        proposals = self.segmentor_model.generate_masks(image_np) # a dict of 'masks', 'boxes')
+
+        # init detections with masks and boxes
+        detections = Detections(proposals) # just turn the dict to a class thoi- still keys as masks, boxes
+        detections.remove_very_small_detections(
+            config=self.post_processing_config.mask_post_processing
+        )
+        # compute descriptors
+        # Use image_np, to conver the bboxes as well as the masks to size of the input 
+        query_decriptors = self.descriptor_model(image_np, detections) # shape as 56 ,1024 as number of proposals, 1024 as fatures dim from Dinov2
+        proposal_stage_end_time = time.time()
+
+        # matching descriptors
+        matching_stage_start_time = time.time()
+        (
+            idx_selected_proposals,
+            pred_idx_objects,
+            pred_scores,
+        ) = self.find_matched_proposals(query_decriptors)
+
+        # update detections
+        detections.filter(idx_selected_proposals)
+        detections.add_attribute("scores", pred_scores)
+        detections.add_attribute("object_ids", pred_idx_objects)
+        detections.apply_nms_per_object_id(
+            nms_thresh=self.post_processing_config.nms_thresh
+        )
+        matching_stage_end_time = time.time()
+
+        runtime = (
+            proposal_stage_end_time
+            - proposal_stage_start_time
+            + matching_stage_end_time
+            - matching_stage_start_time
+        )
+        detections.to_numpy()
+
+        scene_id = batch["scene_id"]
+        frame_id = batch["frame_id"]
+        file_path = osp.join(
+            self.log_dir,
+            f"predictions/{self.dataset_name}/{self.name_prediction_file}/scene{scene_id}_frame{frame_id}",
+        )
+
+        # save detections to file
+        results = detections.save_to_file(
+            scene_id=int(scene_id),
+            frame_id=int(frame_id),
+            runtime=runtime,
+            file_path=file_path,
+            dataset_name=self.dataset_name,
+            return_results=True,
+        )
+        # save runtime to file
+        np.savez(
+            file_path + "_runtime",
+            proposal_stage=proposal_stage_end_time - proposal_stage_start_time,
+            matching_stage=matching_stage_end_time - matching_stage_start_time,
+        )
+        return 0
+
+    def custom_test_epoch_end(self):
         if self.global_rank == 0:  # only rank 0 process
             # can use self.all_gather to gather results from all processes
             # but it is simpler just load the results from files so no file is missing
