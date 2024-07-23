@@ -65,7 +65,7 @@ class CNOS(pl.LightningModule):
             descriptors_path = descriptors_path.replace(".pth", "_pbr.pth")
         if (
             os.path.exists(descriptors_path)
-            and not self.onboarding_config.reset_descriptors
+            and not self.onboarding_config.reset_descriptors # reset_descriptors = False
         ):
             self.ref_data["descriptors"] = torch.load(descriptors_path).to(self.device)
         else:
@@ -133,7 +133,7 @@ class CNOS(pl.LightningModule):
         )[score_per_proposal > self.matching_config.confidence_thresh]
         pred_idx_objects = assigned_idx_object[idx_selected_proposals]
         pred_scores = score_per_proposal[idx_selected_proposals]
-        return idx_selected_proposals, pred_idx_objects, pred_scores
+        return idx_selected_proposals, pred_idx_objects, pred_scores 
 
     def test_step(self, batch, idx):
         if idx == 0:

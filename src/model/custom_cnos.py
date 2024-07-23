@@ -72,7 +72,9 @@ def visualize(rgb, detections, save_path="./tmp/tmp.png"):
         
 def modified_run_inference(template_dir, rgb_path, detections, ref_feats, decriptors, num_max_dets = 20, conf_threshold = 0.5, stability_score_thresh = 0.97):
     '''
-    descriptor are the descriptors of all SAM proposals for query image'''
+    descriptor are the descriptors of all SAM proposals for query image
+    '''
+    rgb = Image.open(rgb_path).convert("RGB")
     detections = Detections(detections)
 
     mask_post_processing = SimpleNamespace(
@@ -80,9 +82,9 @@ def modified_run_inference(template_dir, rgb_path, detections, ref_feats, decrip
         min_mask_size=3e-4  # relative to image size
     )
 
-    detections.remove_very_small_detections(
-            config=mask_post_processing
-        )
+    # detections.remove_very_small_detections(
+    #         config=mask_post_processing
+    #     )
     # decriptors = model.descriptor_model.forward(np.array(rgb), detections)
     
     # get scores per proposal

@@ -137,7 +137,7 @@ class CNOS(pl.LightningModule):
         )[score_per_proposal > self.matching_config.confidence_thresh]
         pred_idx_objects = assigned_idx_object[idx_selected_proposals]
         pred_scores = score_per_proposal[idx_selected_proposals]
-        return idx_selected_proposals, pred_idx_objects, pred_scores
+        return idx_selected_proposals, pred_idx_objects, pred_scores 
 
     def test_step(self, batch, idx):
         if idx == 0:

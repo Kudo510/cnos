@@ -102,7 +102,7 @@ class Detections:
         keep_idxs = torch.logical_and(
             box_areas > config.min_box_size**2, mask_areas > config.min_mask_size
         ) 
-        # logging.info(f"Removing {len(keep_idxs) - keep_idxs.sum()} detections")
+        logging.info(f"Removing {len(keep_idxs) - keep_idxs.sum()} detections")
         for key in self.keys:
             setattr(self, key, getattr(self, key)[keep_idxs])
 
