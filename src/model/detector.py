@@ -102,7 +102,11 @@ class CNOS(pl.LightningModule):
             self.segmentor_model.model.setup_model(device=self.device, verbose=True)
         logging.info(f"Moving models to {self.device} done!")
 
-    def find_matched_proposals(self, proposal_decriptors):
+    def find_matched_proposals(self, proposal_decriptors): 
+        '''
+        Compare with the threshold of 0.5 and return the index of sam proposals that has score > 0.5, also return the obj_id(which object the proposal is) for this sam proposal and also the average top 5 score for this proposals
+        '''
+
         # compute matching scores for each proposals
         scores = self.matching_config.metric(
             proposal_decriptors, self.ref_data["descriptors"]
@@ -115,9 +119,9 @@ class CNOS(pl.LightningModule):
             score_per_proposal_and_object = torch.median(scores, dim=-1)[0]
         elif self.matching_config.aggregation_function == "max":
             score_per_proposal_and_object = torch.max(scores, dim=-1)[0]
-        elif self.matching_config.aggregation_function == "avg_5":
+        elif self.matching_config.aggregation_function == "avg_5":      ## our case
             score_per_proposal_and_object = torch.topk(scores, k=5, dim=-1)[0]
-            score_per_proposal_and_object = torch.mean(
+            score_per_proposal_and_object = torch.mean( # N_proposals x N_objects
                 score_per_proposal_and_object, dim=-1
             )
         else:
@@ -126,7 +130,7 @@ class CNOS(pl.LightningModule):
         # assign each proposal to the object with highest scores
         score_per_proposal, assigned_idx_object = torch.max(
             score_per_proposal_and_object, dim=-1
-        )  # N_query
+        )  # N_proposals 
 
         idx_selected_proposals = torch.arange(
             len(score_per_proposal), device=score_per_proposal.device
@@ -134,6 +138,11 @@ class CNOS(pl.LightningModule):
         pred_idx_objects = assigned_idx_object[idx_selected_proposals]
         pred_scores = score_per_proposal[idx_selected_proposals]
         return idx_selected_proposals, pred_idx_objects, pred_scores 
+        '''
+        idx_selected_proposals : index of the proposals that has score > 0.5
+        pred_idx_objects : object that the proposals shows
+        pred_scores : final similarity score
+        '''
 
     def test_step(self, batch, idx): # idx = 0
         '''
