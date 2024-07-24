@@ -107,9 +107,12 @@ class Detections:
             setattr(self, key, getattr(self, key)[keep_idxs])
 
     def apply_nms_per_object_id(self, nms_thresh=0.5):
+        '''
+        self.object_ids actually is pred_idx_objects - a list of object id that the selected proposals are 
+        '''
         keep_idxs = BatchedData(None) ## cos later we will use .cat to add data to the object
         all_indexes = torch.arange(len(self.object_ids), device=self.boxes.device)
-        for object_id in torch.unique(self.object_ids):
+        for object_id in torch.unique(self.object_ids): # so for icbin only returns 1 and 2
             idx = self.object_ids == object_id
             idx_object_id = all_indexes[idx]
             keep_idx = torchvision.ops.nms(

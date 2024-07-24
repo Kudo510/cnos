@@ -211,7 +211,7 @@ def modified_cnos_crop_feature_extraction(crop_rgb, dino_model, device):
     del dino_model
 
     # PCA
-    pca = PCA(n_components=3)
+    pca = PCA(n_components=3, random_state=5)
     pca_patches_descriptors = pca.fit_transform(np.array(feature_patches)).flatten()
 
     return torch.tensor(pca_patches_descriptors).unsqueeze(0) # patch_features.squeeze().to("cuda:0")
@@ -331,7 +331,7 @@ def modified_cnos_templates_feature_extraction(templates, dino_model, num_templa
     del dino_model
 
     # PCA
-    pca = PCA(n_components=3)
+    pca = PCA(n_components=3, random_state=5)
     pca_patches_descriptors = [pca.fit_transform(np.array(patch_feature)).flatten() for patch_feature in patch_features]
 
     return torch.tensor(pca_patches_descriptors)# patch_features.squeeze().to("cuda:0")
