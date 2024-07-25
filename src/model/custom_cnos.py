@@ -379,7 +379,7 @@ def custom_detections(sam_detections, proposals_features, real_ref_features, fil
     detections.add_attribute("scores", pred_scores)
     detections.add_attribute("object_ids", pred_idx_objects)
     detections.apply_nms_per_object_id(
-        nms_thresh=0.5
+        nms_thresh=0.3
     )
     detections.to_numpy()
 
