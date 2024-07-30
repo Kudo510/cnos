@@ -208,7 +208,7 @@ def templates_feature_extraction_2(templates, template_masks, dino_model, num_te
     print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
 
     # Mask out the templates by clampping at 0,1 for resize image with size of (3, 30, 30)
-    masks = [resize_and_pad_image(torch.tensor(mask).unsqueeze(0), target_max=30).squeeze(dim=0) for mask in template_masks]    
+    masks = [resize_and_pad_image(torch.tensor(mask).unsqueeze(0), target_max=30).flatten() for mask in template_masks]    
     
     plt.imshow(templates[0])
     plt.axis('off')  # Optional: Turn off the axis
@@ -239,7 +239,7 @@ def templates_feature_extraction_2(templates, template_masks, dino_model, num_te
     num_valid_patches, valid_patch_features = filter_out_invalid_templates_2(patch_features, masks)
 
     # PCA
-    pca = PCA(n_components=256)
+    pca = PCA(n_components=256, random_state=5)
     pca_patches_descriptors = pca.fit_transform(np.array(valid_patch_features))
     print("pca_crop_patches_descriptors.shape", pca_patches_descriptors.shape)
 
@@ -290,6 +290,53 @@ def crop_feature_extraction(crop_rgb, dino_model, device):
     del dino_model
 
     num_valid_patches, valid_patch_features = filter_out_invalid_templates(feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
+
+    # PCA
+    pca = PCA(n_components=256, random_state=5)
+    pca_crop_patches_descriptors = pca.fit_transform(np.array(valid_patch_features.cpu()))
+    print(pca_crop_patches_descriptors.shape)
+
+    return pca_crop_patches_descriptors, num_valid_patches, feature_patches
+
+def crop_feature_extraction_2(crop_rgb, crop_mask, dino_model, device):
+    '''
+    Use GT mask
+    use filter_valid_patch_2
+    '''
+    rgb_normalize = T.Compose(
+        [
+            T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+    normalized_crop_rgb = rgb_normalize(crop_rgb/255.0).float()
+    # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
+
+    scaled_padded_crop_rgb = resize_and_pad_image(normalized_crop_rgb).unsqueeze(0) # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
+
+    # Mask out the crop by clampping at 0,1 for resize image with size of (3, 30, 30)
+    # resized_crop = resize_and_pad_image(torch.tensor(crop_rgb).permute(2,0,1), target_max=30)
+    # mask = np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1, dtype="uint8").reshape(-1)
+    mask = resize_and_pad_image(torch.tensor(crop_mask).unsqueeze(0), target_max=30).flatten()
+
+    # plt.imshow(resized_crop.permute(1,2,0))
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
+
+    # # Display the image - 10* see lb the crop is normalized same way as the templates- ready to compare the similarity now
+    # plt.imshow(np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1), cmap=plt.cm.gray)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
+
+    # Extract features from 18th layer of Dinov2 
+    layers_list = list(range(24))
+    torch.cuda.empty_cache()
+    with torch.no_grad(): 
+        feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device), n=layers_list, return_class_token=True)[18][0].reshape(-1,1024)
+    del dino_model
+
+    num_valid_patches, valid_patch_features = filter_out_invalid_templates_2(feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
 
     # PCA
     pca = PCA(n_components=256, random_state=5)
@@ -369,91 +416,90 @@ def calculate_templates_labels(num_valid_patches, kmeans, pca_patches_descriptor
     return templates_labels
 
 
-def calculate_templates_vector(templates_labels, num_clusters=2048):
-    # Calculate bag-of-words descriptors of the templates
-    N = len(templates_labels)  # Number of templates
-    
-    # Calculate occurrences for all templates
-    all_occurrences = np.array([np.bincount(template_label, minlength=num_clusters) for template_label in templates_labels])
-    
-    # Calculate document frequency (number of templates containing each word)
-    doc_frequency = np.sum(all_occurrences > 0, axis=0)
-    
-    # Calculate IDF (add 1 to avoid division by zero)
-    # idf = np.log(N / (doc_frequency + 1))
-    idf = np.log(N / (doc_frequency + 1))
-    
-    # Calculate TF-IDF for each template
-    templates_vector = []
-    for t, occurrences in enumerate(all_occurrences):
-        nt = len(templates_labels[t])
-        tf = occurrences / nt
-        tfidf = tf * idf
-        templates_vector.append(tfidf)
-    
-    return templates_vector
-
-# def calculate_templates_vector(templates_labels, num_clusters = 2048):
+# def calculate_templates_vector(templates_labels, num_clusters=2048):
 #     # Calculate bag-of-words descriptors of the templates
-
-#     templates_vector = list()
-#     all_occurrences = [np.bincount(templates_label, minlength=2048) for templates_label in templates_labels]
-#     ni_array = np.sum(np.array(all_occurrences), axis = 0)
-#     N = len(templates_labels) # Number of templates
-#     for t in range(len(templates_labels)):
-#         template_vector = list()
-#         occurrences = np.bincount(templates_labels[t], minlength=2048)
-#         for i in range(num_clusters):
-#             n_it = occurrences[i]
-#             nt = len(templates_labels[t])
-#             ni = ni_array[i]
-#             if ni==0 or nt==0:
-#                 print(i)
-#             bi = n_it / nt * math.log(N / ni)
-#             template_vector.append(bi)
-#         templates_vector.append(np.array(template_vector))
+#     N = len(templates_labels)  # Number of templates
+    
+#     # Calculate occurrences for all templates
+#     all_occurrences = np.array([np.bincount(template_label, minlength=num_clusters) for template_label in templates_labels])
+    
+#     # Calculate document frequency (number of templates containing each word)
+#     doc_frequency = np.sum(all_occurrences > 0, axis=0)
+    
+#     # Calculate IDF (add 1 to avoid division by zero)
+#     idf = np.log(N / (doc_frequency))
+    
+#     # Calculate TF-IDF for each template
+#     templates_vector = []
+#     for t, occurrences in enumerate(all_occurrences):
+#         nt = len(templates_labels[t])
+#         tf = occurrences / nt
+#         tfidf = tf * idf
+#         templates_vector.append(tfidf)
+    
 #     return templates_vector
 
+def calculate_templates_vector(templates_labels, num_clusters = 2048):
+    # Calculate bag-of-words descriptors of the templates
 
-# def calculate_crop_vector(crop_labels, templates_labels, num_clusters = 2048):
-#     # For word_i, term frequency = occurences of word_i within the crop / number of occurences of word_i in all templates). 
-    
-#     # Calculate bag-of-words descriptors of the templates
-#     all_occurrences_crop = np.bincount(crop_labels, minlength=num_clusters)
+    templates_vector = list()
+    all_occurrences = [np.bincount(templates_label, minlength=2048) for templates_label in templates_labels]
+    ni_array = np.sum(np.array(all_occurrences), axis = 0)
+    N = len(templates_labels) # Number of templates
+    for t in range(len(templates_labels)):
+        template_vector = list()
+        occurrences = np.bincount(templates_labels[t], minlength=2048)
+        for i in range(num_clusters):
+            n_it = occurrences[i]
+            nt = len(templates_labels[t])
+            ni = ni_array[i]
+            if ni==0 or nt==0:
+                print(i)
+            bi = n_it / nt * math.log(N / ni)
+            template_vector.append(bi)
+        templates_vector.append(np.array(template_vector))
+    return templates_vector
 
-#     all_occurrences_templates = [np.bincount(templates_label, minlength=num_clusters) for templates_label in templates_labels]
-#     ni_array = np.sum(np.array(all_occurrences_templates), axis = 0)
-#     N = len(templates_labels) # Number of templates = 642 
 
-#     crop_vector = list()
-#     for i in range(num_clusters):
-#         n_it = all_occurrences_crop[i]
-#         nt = crop_labels.shape[0] # Number of words in crop = 400 
-#         ni = ni_array[i] + n_it
-#         bi = n_it / nt * math.log((N+1) / ni)
-#         crop_vector.append(bi)
-#     return torch.tensor(crop_vector).view(1,-1) # Goal having features size (1,2048)
+def calculate_crop_vector(crop_labels, templates_labels, num_clusters = 2048):
+    # For word_i, term frequency = occurences of word_i within the crop / number of occurences of word_i in all templates). 
+    
+    # Calculate bag-of-words descriptors of the templates
+    all_occurrences_crop = np.bincount(crop_labels, minlength=num_clusters)
+
+    all_occurrences_templates = [np.bincount(templates_label, minlength=num_clusters) for templates_label in templates_labels]
+    ni_array = np.sum(np.array(all_occurrences_templates), axis = 0)
+    N = len(templates_labels) # Number of templates = 642 
+
+    crop_vector = list()
+    for i in range(num_clusters):
+        n_it = all_occurrences_crop[i]
+        nt = crop_labels.shape[0] # Number of words in crop = 400 
+        ni = ni_array[i] + n_it
+        bi = n_it / nt * math.log((N+1) / ni)
+        crop_vector.append(bi)
+    return torch.tensor(crop_vector).view(1,-1) # Goal having features size (1,2048)
 
 
-def calculate_crop_vector(crop_labels, templates_labels, num_clusters=2048):
-    # Calculate occurrences in the crop
-    crop_occurrences = np.bincount(crop_labels, minlength=num_clusters)
+# def calculate_crop_vector(crop_labels, templates_labels, num_clusters=2048):
+#     # Calculate occurrences in the crop
+#     crop_occurrences = np.bincount(crop_labels, minlength=num_clusters)
     
-    # Calculate TF for the crop
-    crop_tf = crop_occurrences / len(crop_labels)
+#     # Calculate TF for the crop
+#     crop_tf = crop_occurrences / len(crop_labels)
     
-    # Calculate document frequency
-    doc_frequency = np.sum([np.bincount(template, minlength=num_clusters) > 0 
-                            for template in templates_labels], axis=0)
+#     # Calculate document frequency
+#     doc_frequency = np.sum([np.bincount(template, minlength=num_clusters) > 0 
+#                             for template in templates_labels], axis=0)
     
-    # Calculate IDF
-    N = len(templates_labels)
-    idf = np.log((N + 1) / (doc_frequency + 1)) + 1  # Add 1 to avoid division by zero and log(1) = 0
+#     # Calculate IDF
+#     N = len(templates_labels)
+#     idf = np.log((N) / (doc_frequency))  # Add 1 to avoid division by zero and log(1) = 0
     
-    # Calculate TF-IDF for the crop
-    crop_tfidf = crop_tf * idf
+#     # Calculate TF-IDF for the crop
+#     crop_tfidf = crop_tf * idf
     
-    return torch.tensor(crop_tfidf).view(1, -1)
+#     return torch.tensor(crop_tfidf).view(1, -1)
 
 
 def calculate_similarity(crop_rgb, query_features, ref_features, templates, synthetic=False):
