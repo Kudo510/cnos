@@ -191,6 +191,7 @@ def templates_feature_extraction_2(templates, template_masks, dino_model, num_te
     '''
     Use GT masks instead of create that
     Also use filter_out_invalid_templates_2
+    pca to 128 only
     '''
     rgb_normalize = T.Compose(
         [
@@ -239,7 +240,7 @@ def templates_feature_extraction_2(templates, template_masks, dino_model, num_te
     num_valid_patches, valid_patch_features = filter_out_invalid_templates_2(patch_features, masks)
 
     # PCA
-    pca = PCA(n_components=256, random_state=5)
+    pca = PCA(n_components=128, random_state=5)
     pca_patches_descriptors = pca.fit_transform(np.array(valid_patch_features))
     print("pca_crop_patches_descriptors.shape", pca_patches_descriptors.shape)
 
@@ -302,6 +303,7 @@ def crop_feature_extraction_2(crop_rgb, crop_mask, dino_model, device):
     '''
     Use GT mask
     use filter_valid_patch_2
+    pca 128 not 256
     '''
     rgb_normalize = T.Compose(
         [
@@ -339,7 +341,7 @@ def crop_feature_extraction_2(crop_rgb, crop_mask, dino_model, device):
     num_valid_patches, valid_patch_features = filter_out_invalid_templates_2(feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
 
     # PCA
-    pca = PCA(n_components=256, random_state=5)
+    pca = PCA(n_components=128, random_state=5)
     pca_crop_patches_descriptors = pca.fit_transform(np.array(valid_patch_features.cpu()))
     print(pca_crop_patches_descriptors.shape)
 
