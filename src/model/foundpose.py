@@ -246,6 +246,65 @@ def templates_feature_extraction_2(templates, template_masks, dino_model, num_te
 
     return pca_patches_descriptors, num_valid_patches, patch_features
 
+def templates_feature_extraction_3(templates, template_masks, dino_model, num_templates, device):
+    '''
+    Use GT masks instead of create that
+    Also use filter_out_invalid_templates_2
+    not do any pca- let do pca together later
+    '''
+    rgb_normalize = T.Compose(
+        [
+            T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+    normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
+    # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
+    print("normalized_templates shape", normalized_templates[0].shape)
+
+    scaled_padded_templates = [resize_and_pad_image(normalized_template)
+                            for normalized_template in normalized_templates] # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
+    print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
+
+    # Mask out the templates by clampping at 0,1 for resize image with size of (3, 30, 30)
+    masks = [resize_and_pad_image(torch.tensor(mask).unsqueeze(0), target_max=30).flatten() for mask in template_masks]    
+    
+    plt.imshow(templates[0])
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
+
+    # plt.imshow(masks[0], cmap=plt.cm.gray)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
+
+    batch_size = 16
+    layers_list = list(range(24))
+    template_batches = [scaled_padded_templates[i:i+batch_size] for i in range(0, len(scaled_padded_templates), batch_size)]
+    patch_features= list()
+
+    for batch in template_batches:
+        batch = torch.stack(batch)
+        size = batch.shape[0]
+        torch.cuda.empty_cache()
+        with torch.no_grad(): 
+            batch_feature = dino_model.module.get_intermediate_layers(
+                batch.to(device), n=layers_list, return_class_token=True
+                )[18][0].reshape(size,-1,1024).cpu()
+        patch_features.append(batch_feature.to('cpu'))
+        del batch_feature
+    patch_features = torch.cat(patch_features)
+    del dino_model
+
+    num_valid_patches, valid_patch_features = filter_out_invalid_templates_2(patch_features, masks)
+
+    # # PCA
+    # pca = PCA(n_components=128, random_state=5)
+    # pca_patches_descriptors = pca.fit_transform(np.array(valid_patch_features))
+    # print("pca_crop_patches_descriptors.shape", pca_patches_descriptors.shape)
+
+    return num_valid_patches, valid_patch_features
+
 def create_mask(image, threshold=10):
     return (np.sum(np.array(image), axis=0) > threshold).astype(np.uint8)
 
