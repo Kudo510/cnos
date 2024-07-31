@@ -249,7 +249,7 @@ def templates_feature_extraction_2(templates, template_masks, dino_model, num_te
 def templates_feature_extraction_3(templates, template_masks, dino_model, num_templates, device):
     '''
     Use GT masks instead of create that
-    Also use filter_out_invalid_templates_2
+    Also use filter_out_invalid_templates
     not do any pca- let do pca together later
     '''
     rgb_normalize = T.Compose(
@@ -296,7 +296,7 @@ def templates_feature_extraction_3(templates, template_masks, dino_model, num_te
     patch_features = torch.cat(patch_features)
     del dino_model
 
-    num_valid_patches, valid_patch_features = filter_out_invalid_templates_2(patch_features, masks)
+    num_valid_patches, valid_patch_features = filter_out_invalid_templates(patch_features, masks)
 
     # # PCA
     # pca = PCA(n_components=128, random_state=5)

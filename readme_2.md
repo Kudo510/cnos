@@ -11,6 +11,7 @@
         Extracting fatures from dinov2_l14_reg get the patches features instead then still match the patches descriptor -to get the templates with similar poses
 
     foundpose_BoW_check.ipynb - check BoW code
+    foundpose_final.ipynb - is the final checking code
 
 # Content
     Input for cnos should be in dataloader with batch size as
