@@ -651,8 +651,9 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
     plt.axis('off')  # Optional: Turn off the axis
     plt.show()
 
-    print("top 5 confidence scores", similar_scores)
-    print("final average confidence score", score_per_detection)
+    # Round up to two decimal places
+    rounded_scores = [math.ceil(score * 1000) / 1000 for score in similar_scores[0]]
+    rounded_avg_score = math.ceil(score_per_detection.item() * 1000) / 1000
 
     width = 50
     height = 50
@@ -669,6 +670,10 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
 
     plt.tight_layout()
     plt.show()
+
+    # Print the results
+    print("Top 5 scores:", rounded_scores)
+    print("Average score:", rounded_avg_score)
 
     return
 
