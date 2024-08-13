@@ -297,85 +297,38 @@ class PairedDataset():
 
 
 class ContrastiveModel(nn.Module):
-    def __init__(self,):
+    def __init__(self, device):
+        super(ContrastiveModel, self).__init__()  # Initialize the nn.Module superclass
         self.layers_list = list(range(24))
-
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
         dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14_reg')
         dinov2_vitl14.patch_size = 14
         if torch.cuda.is_available():
-            self.dinov2_vitl14 = torch.nn.DataParallel(dinov2_vitl14).to(device)  # Use DataParallel for multiple GPUs
+            dinov2_vitl14 = torch.nn.DataParallel(dinov2_vitl14).to(self.device)
+        self.dinov2_vitl14 = dinov2_vitl14
 
-    def forward(x):
+    def forward(self, x):
         return self.dinov2_vitl14.module.get_intermediate_layers(
-            x.to(device), n=layers_list, return_class_token=True
-            )[18][0]
+            x.to(self.device), n=self.layers_list, return_class_token=True
+        )[18][0]
 
 
 # Contrastive loss function
 class ContrastiveLoss(nn.Module):
     def __init__(self, margin=1.0):
-        super(ContrastiveLoss, self).__init__()
+        super().__init__()  # Corrected use of super()
         self.margin = margin
 
     def forward(self, output1, output2, label):
+        # Calculate Euclidean distance
         euclidean_distance = nn.functional.pairwise_distance(output1, output2)
-        loss = torch.mean((1-label) * torch.pow(euclidean_distance, 2) +
-                          (label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
-        return loss
+
+        # Calculate loss
+        loss_contrastive = torch.mean(
+            (1 - label) * torch.pow(euclidean_distance, 2) +
+            label * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
+        )
+
+        return loss_contrastive
 
 
-def train(device, model, template_paths, template_poses_path, all_pos_proposals, all_neg_proposals):
-
-    model = model.to(device)
-    criterion = ContrastiveLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    # Data loading and preprocessing
-    transform = T.Compose(
-        [
-            T.ToTensor(),
-            T.Lambda(lambda x: x / 255.0),  # Ensures the scaling by 255.0
-            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ]
-    )
-
-    template_paths = sorted(glob.glob(template_paths))
-    template_poses = np.load(template_poses_path)
-
-    templates = {
-        "rgb" : [np.array(Image.open(template_path).convert("RGB")) for template_path in template_paths],
-        "poses" : [template_pose for template_pose in template_poses]
-    }
-
-    postive_pairs = extract_positive_pairs(all_pos_proposals, templates)
-    negative_pairs = extract_negative_pairs(all_neg_proposals, all_pos_proposals, templates)
-
-    train_postive_pairs, remaining_postive_pairs = train_test_split(postive_pairs, test_size=0.2, random_state=0)
-    val_postive_pairs, test_postive_pairs = train_test_split(remaining_postive_pairs, test_size=0.5, random_state=0)
-
-    train_negative_pairs, remaining_negative_pairs = train_test_split(negative_pairs, test_size=0.2, random_state=0)
-    val_negative_pairs, test_negative_pairs = train_test_split(remaining_negative_pairs, test_size=0.5, random_state=0)
-
-    train_dataset = PairedDataset(train_postive_pairs + train_negative_pairs, transform=transform)
-    val_dataset = PairedDataset(val_postive_pairs + val_negative_pairs, transform=transform)
-    test_dataset = PairedDataset(test_postive_pairs + test_negative_pairs, transform=transform)
-
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=4, shuffle=True, num_workers=4)
-
-    # Training loop
-    num_epochs = 10
-    for epoch in range(num_epochs):
-        for i, ((img1, img2), label) in enumerate(train_loader):
-            img1, img2, label = img1.to(device), img2.to(device), label.to(device)
-
-            optimizer.zero_grad()
-            output1, output2 = model(img1), model(img2)
-            loss = criterion(output1, output2, label)
-            loss.backward()
-            optimizer.step()
-
-            if i % 100 == 0:
-                print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {loss.item():.4f}')
