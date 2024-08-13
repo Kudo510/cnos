@@ -13,6 +13,8 @@ import json
 from scipy.spatial.distance import cdist
 from scipy.spatial.transform import Rotation
 import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader
 
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
 
@@ -110,7 +112,7 @@ def extract_negative_pairs(all_neg_proposals, all_pos_proposals, templates):
         neg_pairs.append(neg_pair)
     return neg_pairs
 
-    
+
 def resize_and_pad_image(image, target_max=420):
     '''
     cnos target_max = 224
@@ -136,6 +138,7 @@ def resize_and_pad_image(image, target_max=420):
     else:
         scaled_padded_image = scaled_image
     return scaled_padded_image
+
     
 def preprocess_images(input_images, contrastive_model):
     '''
@@ -279,37 +282,18 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
 
 # Custom dataset for paired images
 class PairedDataset():
-    def __init__(self, template_paths, template_poses_path, all_pos_proposals, all_neg_proposals ):
-
-        self.template_paths = sorted(glob.glob(template_paths))
-        self.template_poses = np.load(template_poses_path)
-
-        self.templates = {
-            "rgb" : [np.array(Image.open(template_path).convert("RGB")) for template_path in template_paths],
-            "poses" : [template_pose for template_pose in template_poses]
-        }
-
-        self.postive_pairs = extract_positive_pairs(all_pos_proposals)
+    def __init__(self, dataset, transform):
+        self.dataset = dataset
         self.transform = transform
 
     def __getitem__(self, index):
-        img1, label1 = self.dataset[index]
-        
-        # Randomly choose the second image
-        if random.random() > 0.5:  # Positive pair
-            img2, label2 = self.dataset[random.choice(self.dataset.class_to_idx[self.dataset.classes[label1]])]
-            target = 0
-        else:  # Negative pair
-            img2, label2 = self.dataset[random.randint(0, len(self.dataset) - 1)]
-            while label2 == label1:
-                img2, label2 = self.dataset[random.randint(0, len(self.dataset) - 1)]
-            target = 1
-
-        return (img1, img2), target
+        img1 = self.transform(self.dataset["img1"])
+        img2 = self.transform(self.dataset["img2"])
+        label = self.dataset["label"]
+        return img1, img2, label
 
     def __len__(self):
         return len(self.dataset)
-
 
 
 class ContrastiveModel(nn.Module):
@@ -341,21 +325,45 @@ class ContrastiveLoss(nn.Module):
         return loss
 
 
-def train(device, model, train_dataset):
+def train(device, model, template_paths, template_poses_path, all_pos_proposals, all_neg_proposals):
 
     model = model.to(device)
     criterion = ContrastiveLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     # Data loading and preprocessing
-    transform = transforms.Compose([
-        transforms.Resize((32, 32)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
+    transform = T.Compose(
+        [
+            T.ToTensor(),
+            T.Lambda(lambda x: x / 255.0),  # Ensures the scaling by 255.0
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
 
-    train_dataset = PairedDataset(root_dir='path/to/your/dataset', transform=transform)
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4)
+    template_paths = sorted(glob.glob(template_paths))
+    template_poses = np.load(template_poses_path)
+
+    templates = {
+        "rgb" : [np.array(Image.open(template_path).convert("RGB")) for template_path in template_paths],
+        "poses" : [template_pose for template_pose in template_poses]
+    }
+
+    postive_pairs = extract_positive_pairs(all_pos_proposals, templates)
+    negative_pairs = extract_negative_pairs(all_neg_proposals, all_pos_proposals, templates)
+
+    train_postive_pairs, remaining_postive_pairs = train_test_split(postive_pairs, test_size=0.2, random_state=0)
+    val_postive_pairs, test_postive_pairs = train_test_split(remaining_postive_pairs, test_size=0.5, random_state=0)
+
+    train_negative_pairs, remaining_negative_pairs = train_test_split(negative_pairs, test_size=0.2, random_state=0)
+    val_negative_pairs, test_negative_pairs = train_test_split(remaining_negative_pairs, test_size=0.5, random_state=0)
+
+    train_dataset = PairedDataset(train_postive_pairs + train_negative_pairs, transform=transform)
+    val_dataset = PairedDataset(val_postive_pairs + val_negative_pairs, transform=transform)
+    test_dataset = PairedDataset(test_postive_pairs + test_negative_pairs, transform=transform)
+
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=4, shuffle=True, num_workers=4)
 
     # Training loop
     num_epochs = 10
