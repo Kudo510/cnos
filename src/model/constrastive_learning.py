@@ -96,9 +96,21 @@ def extract_positive_pairs(all_pos_proposals, templates):
 def extract_negative_pairs(all_neg_proposals, all_pos_proposals, templates):
     selected_neg_proposals = random.sample(all_neg_proposals, len(all_pos_proposals)) # Num of negative = num of positive
     copied_templates = templates.copy()
-    for neg_prop in selected_neg_proposals:
-        random.choice(foo)
 
+    neg_pairs = list()
+    for neg_prop in selected_neg_proposals:
+        selected_temp = random.choice(copied_templates)
+        copied_templates.remove(selected_temp)
+
+        neg_pair = {
+            "img1" : resize_and_pad_image(neg_prop, target_max=224), 
+            "img2" : resize_and_pad_image(selected_temp, target_max=224),
+            "label" : 0
+        }
+        neg_pairs.append(neg_pair)
+    return neg_pairs
+
+    
 def resize_and_pad_image(image, target_max=420):
     '''
     cnos target_max = 224
