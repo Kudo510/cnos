@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
 import random
+import json
 
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
 
@@ -102,12 +103,15 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
     custom_sam_model = CustomSamAutomaticMaskGenerator(sam=sam_model)
     custom_sam_model.predictor.model.to("cuda")
 
-    frames_path = f"datasets/bop23_challenge/datasets/{dataset}/{data_type}/{scene_id:06d}/rgb/*.png" #"datasets/bop23_challenge/datasets/icbin/test/000001/rgb/000008.png"
-    frames_path = glob.glob(frames_path)
+    frame_paths = f"datasets/bop23_challenge/datasets/{dataset}/{data_type}/{scene_id:06d}/rgb/*.png" #"datasets/bop23_challenge/datasets/icbin/test/000001/rgb/000008.png"
+    frame_paths = sorted(glob.glob(frame_paths)) # only 50 not 55 paths - some ids are missing s.t 10
 
+    scene_gt_json = f"datasets/bop23_challenge/datasets/{dataset}/{data_type}/{scene_id:06d}/scene_gt.json"
+    scene_gt = json.load(open(scene_gt_json, 'r'))
+        
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in frames_path:
+    for frame_path in frame_paths[:3]:
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
 
@@ -120,32 +124,55 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
 
         frame_id = frame_path.split("/")[-1].split(".")[0]
         visib_mask_paths = f"datasets/bop23_challenge/datasets/{dataset}/{data_type}/{scene_id:06d}/mask_visib/{frame_id}_*.png" #"datasets/bop23_challenge/datasets/icbin/test/000001/rgb/000008.png"
-        mask_paths = glob.glob(visib_mask_paths)
-        masks_gt = [(np.array(Image.open(mask_path).convert("L"))>0).astype(int) for mask_path in mask_paths]
-        masks_pred = [np.array(mask.cpu()).astype(int) for mask in detections["masks"]]
+        mask_paths = sorted(glob.glob(visib_mask_paths))
+
+        poses = list()
+        for mask_path in mask_paths:
+            scene_id = int(mask_path.split('/')[-1].split('.')[0].split('_')[0])
+            frame_id = int(mask_path.split('/')[-1].split('.')[0].split('_')[1])
+            pose = {
+                "R" : scene_gt[str(scene_id)][frame_id]["cam_R_m2c"],
+                "t" : scene_gt[str(scene_id)][frame_id]["cam_t_m2c"]
+            }
+            poses.append(pose)
+
+        masks_gt = {
+            "masks" : [(np.array(Image.open(mask_path).convert("L"))>0).astype(int) for mask_path in mask_paths],
+            "poses" : poses
+        }
+        masks_pred = {
+            "masks" : [np.array(mask.cpu()).astype(int) for mask in detections["masks"]],
+            "rgb" : [rgb for rgb in masked_images]
+        }
 
         best_mask_indices = []
-        for gt_i, gt in enumerate(masks_gt):
+        pos_proposals = []
+        for gt_i, gt in enumerate(masks_gt["masks"]):
 
             best_iou = 0
             best_mask_index = -1
 
-            for i, mask in enumerate(masks_pred):
+            for i, mask in enumerate(masks_pred["masks"]):
                 iou = calculate_iou(gt, mask)
                 if iou > best_iou:
                     best_iou = iou
                     best_mask_index = i
             if best_iou >0.5:
                 best_mask_indices.append(best_mask_index)
-            log.info(f"The best for {gt_i}th mask is at index {best_mask_index} with an IoU of {best_iou}")
 
-            pos_proposals = [masked_images[i] for i in best_mask_indices]
-            neg_proposals = [masked_images[j] for j in range(len(masked_images)) if j not in best_mask_indices]
+                # pos_proposal rgb from prediction and pose from gt
+                pos_proposal = {
+                    "rgb": masks_pred["rgb"][best_mask_index],
+                    "pose": masks_gt["poses"][gt_i]
+                }
+                
+            log.info(f"The best for {gt_i}th mask is at index {best_mask_index} with an IoU of {best_iou}")
+            pos_proposals.append(pos_proposal)      
 
         del detections
     
         all_pos_proposals.append(pos_proposals)
-        all_neg_proposals.append(neg_proposals)
+        all_neg_proposals.append([masked_images[j] for j in range(len(masked_images)) if j not in best_mask_indices])
 
     return all_pos_proposals, all_neg_proposals
 
