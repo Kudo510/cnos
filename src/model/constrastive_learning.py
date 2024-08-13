@@ -10,12 +10,94 @@ import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
 import random
 import json
+from scipy.spatial.distance import cdist
+from scipy.spatial.transform import Rotation
+import matplotlib.pyplot as plt
 
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 log = logging.getLogger(__name__)
 
+random.seed(10)
+
+def compute_inplane(rot_query_openCV, rot_template_openCV):
+    delta = rot_template_openCV.dot(rot_query_openCV.T)
+    inp = extract_inplane_from_pose(delta)
+    # double check to make sure that reconved rotation is correct
+    R_inp = convert_inplane_to_rotation(inp)
+    recovered_R1 = R_inp.dot(rot_template_openCV)
+    err = geodesic_numpy(recovered_R1, rot_query_openCV)
+    if err >= 15:
+        print("WARINING, error of recovered pose is >=15, err=", err)
+    return inp
+
+
+def opencv2opengl(cam_matrix_world):
+    transform = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+    if len(cam_matrix_world.shape) == 2:
+        return np.matmul(transform, cam_matrix_world)
+    else:
+        transform = np.tile(transform, (cam_matrix_world.shape[0], 1, 1))
+        return np.matmul(transform, cam_matrix_world)
+
+
+def extract_inplane_from_pose(pose):
+    inp = Rotation.from_matrix(pose).as_euler("zyx", degrees=True)[0]
+    return inp
+
+
+def convert_inplane_to_rotation(inplane):
+    R_inp = Rotation.from_euler("z", -inplane, degrees=True).as_matrix()
+    return R_inp
+
+
+def geodesic_numpy(R1, R2):
+    theta = (np.trace(R2.dot(R1.T)) - 1) / 2
+    theta = np.clip(theta, -1, 1)
+    return np.degrees(np.arccos(theta))
+
+
+def extract_positive_pairs(all_pos_proposals, templates):
+    pos_pairs = list()
+    for proposals_id in range(len(all_pos_proposals)):
+        obj_query_pose = all_pos_proposals[proposals_id]["pose"][None]
+        obj_template_poses = templates["poses"]
+
+        return_inplane = True
+
+        obj_query_openGL_pose = opencv2opengl(obj_query_pose)
+        obj_query_openGL_location = obj_query_openGL_pose[:, 2, :3]  # Mx3 # (translation components) -  It assumes that the 3D location is found in the third column of the pose matrices.
+        obj_template_openGL_poses = opencv2opengl(obj_template_poses)
+        obj_template_openGL_locations = obj_template_openGL_poses[:, 2, :3]  # Nx3 # (translation components)
+
+        # find the nearest template
+        # It computes the pairwise distances between each query pose location and each template pose location using cdist.
+        distances = cdist(obj_query_openGL_location, obj_template_openGL_locations)
+        best_index_in_pose_distribution = np.argmin(distances, axis=-1)  # M
+        if return_inplane:
+            nearest_poses = obj_template_poses[best_index_in_pose_distribution]
+            inplanes = np.zeros(len(obj_query_pose))
+            for idx in range(len(obj_query_pose)):
+                rot_query_openCV = obj_query_pose[idx, :3, :3]
+                rot_template_openCV = nearest_poses[idx, :3, :3]
+                inplanes[idx] = compute_inplane(rot_query_openCV, rot_template_openCV)
+
+        pos_pair = {
+            "img1" : resize_and_pad_image(templates["rgb"][best_index_in_pose_distribution[0]], target_max=224), # resize and pad images
+            "img2" : resize_and_pad_image(all_pos_proposals[proposals_id]["rgb"], target_max=224), 
+            "label" : 1
+        }
+        pos_pairs.append(pos_pair)
+
+    return pos_pairs
+
+
+def extract_negative_pairs(all_neg_proposals, all_pos_proposals, templates):
+    selected_neg_proposals = random.sample(all_neg_proposals, len(all_pos_proposals)) # Num of negative = num of positive
+    copied_templates = templates.copy()
+    for neg_prop in selected_neg_proposals:
+        random.choice(foo)
 
 def resize_and_pad_image(image, target_max=420):
     '''
@@ -111,10 +193,10 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
         
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in frame_paths[:3]:
+    for frame_path in frame_paths:
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
-
+        
         masked_images = []
         for mask in detections["masks"].cpu():
             binary_mask = np.array(mask) * 255
@@ -128,13 +210,18 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
 
         poses = list()
         for mask_path in mask_paths:
-            scene_id = int(mask_path.split('/')[-1].split('.')[0].split('_')[0])
-            frame_id = int(mask_path.split('/')[-1].split('.')[0].split('_')[1])
-            pose = {
-                "R" : scene_gt[str(scene_id)][frame_id]["cam_R_m2c"],
-                "t" : scene_gt[str(scene_id)][frame_id]["cam_t_m2c"]
-            }
-            poses.append(pose)
+            mask_scene_id_ = int(mask_path.split('/')[-1].split('.')[0].split('_')[0])
+            mask_frame_id = int(mask_path.split('/')[-1].split('.')[0].split('_')[1])
+
+            # Extracting rotation (R) and translation (t)
+            R = np.array(scene_gt[str(mask_scene_id_)][mask_frame_id]["cam_R_m2c"]).reshape(3,3)
+            t = np.array(scene_gt[str(mask_scene_id_)][mask_frame_id]["cam_t_m2c"])
+
+            # Construct the 4x4 transformation matrix
+            T = np.eye(4)
+            T[:3, :3] = R
+            T[:3, 3] = t
+            poses.append(T)
 
         masks_gt = {
             "masks" : [(np.array(Image.open(mask_path).convert("L"))>0).astype(int) for mask_path in mask_paths],
@@ -147,40 +234,50 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
 
         best_mask_indices = []
         pos_proposals = []
-        for gt_i, gt in enumerate(masks_gt["masks"]):
+        for i_gt, mask_gt in enumerate(masks_gt["masks"]):
 
             best_iou = 0
             best_mask_index = -1
 
-            for i, mask in enumerate(masks_pred["masks"]):
-                iou = calculate_iou(gt, mask)
+            for i, mask_pred in enumerate(masks_pred["masks"]):
+                iou = calculate_iou(mask_gt, mask_pred)
                 if iou > best_iou:
                     best_iou = iou
                     best_mask_index = i
+
             if best_iou >0.5:
                 best_mask_indices.append(best_mask_index)
-
                 # pos_proposal rgb from prediction and pose from gt
                 pos_proposal = {
                     "rgb": masks_pred["rgb"][best_mask_index],
-                    "pose": masks_gt["poses"][gt_i]
+                    "pose": masks_gt["poses"][i_gt]
                 }
+                pos_proposals.append(pos_proposal)
                 
-            log.info(f"The best for {gt_i}th mask is at index {best_mask_index} with an IoU of {best_iou}")
-            pos_proposals.append(pos_proposal)      
-
+            log.info(f"For frame {frame_path.split('/')[-1]}, the best for {i_gt}th mask is at index {best_mask_index} with an IoU of {best_iou}")      
+        
         del detections
     
         all_pos_proposals.append(pos_proposals)
         all_neg_proposals.append([masked_images[j] for j in range(len(masked_images)) if j not in best_mask_indices])
+        log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
 
     return all_pos_proposals, all_neg_proposals
 
 
 # Custom dataset for paired images
-class PairedDataset(Dataset):
-    def __init__(self, root_dir, transform=None):
-        self.dataset = ImageFolder(root_dir, transform=transform)
+class PairedDataset():
+    def __init__(self, template_paths, template_poses_path, all_pos_proposals, all_neg_proposals ):
+
+        self.template_paths = sorted(glob.glob(template_paths))
+        self.template_poses = np.load(template_poses_path)
+
+        self.templates = {
+            "rgb" : [np.array(Image.open(template_path).convert("RGB")) for template_path in template_paths],
+            "poses" : [template_pose for template_pose in template_poses]
+        }
+
+        self.postive_pairs = extract_positive_pairs(all_pos_proposals)
         self.transform = transform
 
     def __getitem__(self, index):
