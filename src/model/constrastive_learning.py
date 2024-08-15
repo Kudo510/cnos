@@ -15,6 +15,8 @@ from scipy.spatial.transform import Rotation
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
+from tqdm import tqdm, trange
 
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
 
@@ -59,6 +61,39 @@ def geodesic_numpy(R1, R2):
     theta = np.clip(theta, -1, 1)
     return np.degrees(np.arccos(theta))
 
+# def extract_positive_negative_pairs(all_pos_proposals, all_neg_proposals, templates):
+#     pos_pairs = list()
+#     for proposals_id in range(len(all_pos_proposals)):
+#         obj_query_pose = all_pos_proposals[proposals_id]["pose"][None]
+#         obj_template_poses = templates["poses"]
+
+#         return_inplane = True
+
+#         obj_query_openGL_pose = opencv2opengl(obj_query_pose)
+#         obj_query_openGL_location = obj_query_openGL_pose[:, 2, :3]  # Mx3 # (translation components) -  It assumes that the 3D location is found in the third column of the pose matrices.
+#         obj_template_openGL_poses = opencv2opengl(obj_template_poses)
+#         obj_template_openGL_locations = obj_template_openGL_poses[:, 2, :3]  # Nx3 # (translation components)
+
+#         # find the nearest template
+#         # It computes the pairwise distances between each query pose location and each template pose location using cdist.
+#         distances = cdist(obj_query_openGL_location, obj_template_openGL_locations)
+#         best_index_in_pose_distribution = np.argmin(distances, axis=-1)  # M
+#         if return_inplane:
+#             nearest_poses = obj_template_poses[best_index_in_pose_distribution]
+#             inplanes = np.zeros(len(obj_query_pose))
+#             for idx in range(len(obj_query_pose)):
+#                 rot_query_openCV = obj_query_pose[idx, :3, :3]
+#                 rot_template_openCV = nearest_poses[idx, :3, :3]
+#                 inplanes[idx] = compute_inplane(rot_query_openCV, rot_template_openCV)
+
+#         pos_pair = {
+#             "img1" : resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]]/255.0, (2,0,1)), target_max=224), # resize and pad images
+#             "img2" : resize_and_pad_image(np.transpose(np.array(all_pos_proposals[proposals_id]["rgb"])/255.0, (2,0,1)), target_max=224), 
+#             "label" : 1
+#         }
+#         pos_pairs.append(pos_pair)
+
+#     return pos_pairs
 
 def extract_positive_pairs(all_pos_proposals, templates):
     pos_pairs = list()
@@ -86,8 +121,8 @@ def extract_positive_pairs(all_pos_proposals, templates):
                 inplanes[idx] = compute_inplane(rot_query_openCV, rot_template_openCV)
 
         pos_pair = {
-            "img1" : resize_and_pad_image(templates["rgb"][best_index_in_pose_distribution[0]], target_max=224), # resize and pad images
-            "img2" : resize_and_pad_image(all_pos_proposals[proposals_id]["rgb"], target_max=224), 
+            "img1" : resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224), # resize and pad images
+            "img2" : resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224), 
             "label" : 1
         }
         pos_pairs.append(pos_pair)
@@ -97,30 +132,33 @@ def extract_positive_pairs(all_pos_proposals, templates):
 
 def extract_negative_pairs(all_neg_proposals, all_pos_proposals, templates):
     selected_neg_proposals = random.sample(all_neg_proposals, len(all_pos_proposals)) # Num of negative = num of positive
-    copied_templates = templates.copy()
+    copied_templates = templates["rgb"].copy()
 
     neg_pairs = list()
     for neg_prop in selected_neg_proposals:
-        selected_temp = random.choice(copied_templates)
-        copied_templates.remove(selected_temp)
+        selected_temp_index = random.randint(0, len(copied_templates) - 1)
+        selected_temp = copied_templates[selected_temp_index]
+        # del copied_templates[selected_temp_index]
 
         neg_pair = {
-            "img1" : resize_and_pad_image(neg_prop, target_max=224), 
-            "img2" : resize_and_pad_image(selected_temp, target_max=224),
+            "img1" : resize_and_pad_image(np.transpose(neg_prop, (2,0,1)), target_max=224), 
+            "img2" : resize_and_pad_image(np.transpose(selected_temp, (2,0,1)), target_max=224),
             "label" : 0
         }
         neg_pairs.append(neg_pair)
     return neg_pairs
 
 
-def resize_and_pad_image(image, target_max=420):
+def resize_and_pad_image(image, target_max=224):
     '''
     cnos target_max = 224
     foundpose target_max = 420
     '''
+
+    # image = np.transpose(input_image.copy(), (2,0,1))
     # Scale image to 420
     scale_factor = target_max / torch.max(torch.tensor(image.shape)) # 420/max of x1,y1,x2,y2
-    scaled_image = F.interpolate(image.unsqueeze(0), scale_factor=scale_factor.item())[0] # unsqueeze at  0 - B,C, H, W
+    scaled_image = F.interpolate(torch.tensor(image).unsqueeze(0), scale_factor=scale_factor.item())[0] # unsqueeze at  0 - B,C, H, W
     
     # Padding 0 to 3, 420, 420
     original_h, original_w = scaled_image.shape[1:]
@@ -137,39 +175,43 @@ def resize_and_pad_image(image, target_max=420):
         )
     else:
         scaled_padded_image = scaled_image
+    
+    if scaled_padded_image.shape[-1] == 223:
+        scaled_padded_image = F.pad(scaled_padded_image, (0, 1, 0, 1), mode='constant', value=0)
+
     return scaled_padded_image
 
     
-def preprocess_images(input_images, contrastive_model):
-    '''
-    Return the features of input images
-    '''
-    rgb_normalize = T.Compose(
-        [
-            T.ToTensor(),
-            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ]
-    )
-    normalized_images = [rgb_normalize(input_image/255.0).float() for img in input_images]
-    resized_images = [resize_and_pad_image(normalized_image, target_max=224) for normalized_image in normalized_images]
+# def preprocess_images(input_images, contrastive_model):
+#     '''
+#     Return the features of input images
+#     '''
+#     rgb_normalize = T.Compose(
+#         [
+#             T.ToTensor(),
+#             T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+#         ]
+#     )
+#     normalized_images = [rgb_normalize(input_image/255.0).float() for img in input_images]
+#     resized_images = [resize_and_pad_image(normalized_image, target_max=224) for normalized_image in normalized_images]
 
-    batch_size = 16
-    layers_list = list(range(24))
-    batches = [resized_images[i:i+batch_size] for i in range(0, len(resized_images), batch_size)]
-    patch_features= list()
+#     batch_size = 16
+#     layers_list = list(range(24))
+#     batches = [resized_images[i:i+batch_size] for i in range(0, len(resized_images), batch_size)]
+#     patch_features= list()
 
-    for batch in batches:
-        batch = torch.stack(batch)
-        size = batch.shape[0]
-        torch.cuda.empty_cache()
-        with torch.no_grad(): 
-            batch_feature = contrastive_model(batch).reshape(size,-1,1024).cpu()
-        patch_features.append(batch_feature.to('cpu'))
-        del batch_feature
-    patch_features = torch.cat(patch_features)
-    del contrastive_model
+#     for batch in batches:
+#         batch = torch.stack(batch)
+#         size = batch.shape[0]
+#         torch.cuda.empty_cache()
+#         with torch.no_grad(): 
+#             batch_feature = contrastive_model(batch).reshape(size,-1,1024).cpu()
+#         patch_features.append(batch_feature.to('cpu'))
+#         del batch_feature
+#     patch_features = torch.cat(patch_features)
+#     del contrastive_model
 
-    return patch_features
+#     return patch_features
 
 
 def extract_object_by_mask(image, mask, width: int = 512):
@@ -264,7 +306,7 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
                 best_mask_indices.append(best_mask_index)
                 # pos_proposal rgb from prediction and pose from gt
                 pos_proposal = {
-                    "rgb": masks_pred["rgb"][best_mask_index],
+                    "rgb": np.array(masks_pred["rgb"][best_mask_index])/255.0,
                     "pose": masks_gt["poses"][i_gt]
                 }
                 pos_proposals.append(pos_proposal)
@@ -274,7 +316,7 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
         del detections
     
         all_pos_proposals.append(pos_proposals)
-        all_neg_proposals.append([masked_images[j] for j in range(len(masked_images)) if j not in best_mask_indices])
+        all_neg_proposals.append([np.array(masked_images[j])/255.0 for j in range(len(masked_images)) if j not in best_mask_indices])
         log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
 
     return all_pos_proposals, all_neg_proposals
@@ -287,10 +329,11 @@ class PairedDataset():
         self.transform = transform
 
     def __getitem__(self, index):
-        img1 = self.transform(self.dataset["img1"])
-        img2 = self.transform(self.dataset["img2"])
-        label = self.dataset["label"]
-        return img1, img2, label
+        img1 = self.transform(self.dataset[index]["img1"])
+        img2 = self.transform(self.dataset[index]["img2"])
+        label = self.dataset[index]["label"]
+        return img1.float(), img2.float(), label
+        # return img1.float(), label
 
     def __len__(self):
         return len(self.dataset)
@@ -310,13 +353,13 @@ class ContrastiveModel(nn.Module):
     def forward(self, x):
         return self.dinov2_vitl14.module.get_intermediate_layers(
             x.to(self.device), n=self.layers_list, return_class_token=True
-        )[18][0]
+        )[23][1]
 
 
 # Contrastive loss function
 class ContrastiveLoss(nn.Module):
     def __init__(self, margin=1.0):
-        super().__init__()  # Corrected use of super()
+        super().__init__() 
         self.margin = margin
 
     def forward(self, output1, output2, label):
@@ -332,3 +375,101 @@ class ContrastiveLoss(nn.Module):
         return loss_contrastive
 
 
+def train(device, model, template_paths, template_poses_path, all_pos_proposals, all_neg_proposals):
+
+    model = model.to(device)
+    criterion = ContrastiveLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    # Data loading and preprocessing
+    transform = transforms.Compose(
+        [
+            # transforms.Lambda(lambda x: x / 255.0),  # Ensures the scaling by 255.0
+            # transforms.ToTensor(),
+            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+    template_paths = sorted(glob.glob(template_paths))
+    template_poses = np.load(template_poses_path)
+
+    templates = {
+        "rgb" : [np.array(Image.open(template_path).convert("RGB"))/255.0 for template_path in template_paths],
+        "poses" : template_poses
+    }
+
+    postive_pairs = extract_positive_pairs(all_pos_proposals, templates)
+    negative_pairs = extract_negative_pairs(all_neg_proposals, all_pos_proposals, templates)
+
+    train_postive_pairs, remaining_postive_pairs = train_test_split(postive_pairs, test_size=0.2, random_state=0)
+    val_postive_pairs, test_postive_pairs = train_test_split(remaining_postive_pairs, test_size=0.5, random_state=0)
+
+    train_negative_pairs, remaining_negative_pairs = train_test_split(negative_pairs, test_size=0.2, random_state=0)
+    val_negative_pairs, test_negative_pairs = train_test_split(remaining_negative_pairs, test_size=0.5, random_state=0)
+
+    train_dataset = PairedDataset(train_postive_pairs + train_negative_pairs, transform=transform)
+    val_dataset = PairedDataset(val_postive_pairs + val_negative_pairs, transform=transform)
+    test_dataset = PairedDataset(test_postive_pairs + test_negative_pairs, transform=transform)
+
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=4, shuffle=True, num_workers=4)
+
+    # Training loop
+    num_epochs = 10
+    best_val_loss = float('inf')
+    for epoch in trange(int(num_epochs), desc="Training"):
+        train_loss = 0.0
+        for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} in training", leave=False):
+            img1, img2, label = batch
+            img1, img2, label = img1.to(device), img2.to(device), label.to(device)
+            output1, output2 = model(img1), model(img2)
+            loss = criterion(output1, output2, label)
+            train_loss += loss.detach().cpu().item() / len(train_loader)
+            # print(f"train_loss: {train_loss}")
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+        print(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss:.5f}")
+        if epoch %1 == 0:
+            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/model_checkpoint'+str(epoch)+'.pth')
+
+        if epoch %1 == 0:
+            # Validation
+            val_loss = 0.0
+            model.eval()  #
+            with torch.no_grad():
+                for batch_val in tqdm(val_loader, desc=f"Epoch {epoch + 1} in validation", leave=False):
+                    img1_val, img2_val, label_val = batch_val
+                    img1_val, img2_val, label_val = img1_val.to(device), img2_val.to(device), label_val.to(device)
+                    output1_val, output2_val = model(img1_val), model(img2_val)
+                    loss = criterion(output1_val, output2_val, label_val)
+                    val_loss += loss.detach().cpu().item() / len(val_loader)
+            print(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss:.5f}")
+            # Check if the validation loss is better than the best validation loss so far
+            if val_loss < best_val_loss:
+                # Update the best validation loss and save the model state
+                best_val_loss = val_loss
+                best_model_state = model.state_dict()
+                print("best_val_loss: ", best_val_loss)
+                print("saving best model at epoch: ", epoch)
+                torch.save(best_model_state, 'contrastive_learning/saved_checkpoints/best_model_checkpoint.pth')
+
+def test(model, test_loader, device):
+    
+    model = model.to(device)
+    criterion = ContrastiveLoss()
+    model.eval()
+    with torch.no_grad():
+        correct, total = 0, 0
+        test_loss = 0.0
+        for batch_test in tqdm(test_loader, desc="Testing"):
+            img1_test, img2_test, label_test = batch_test
+            img1_test, img2_test, label_test = img1_test.to(device), img2_test.to(device), label_test.to(device)
+            output1_test, output2_test = model(img1_test), model(img2_test)
+            loss = criterion(output1_test, output2_test, label_test)
+            test_loss += loss.detach().cpu().item() / len(test_loader)
+            # correct += torch.sum(torch.argmax(y_hat_test, dim=1) == y_test).detach().cpu().item()
+            # total += len(x_test)
+        print(f"Test loss: {test_loss:.2f}")
+        # print(f"Test accuracy: {correct / total * 100:.2f}%")

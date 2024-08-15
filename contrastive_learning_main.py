@@ -11,11 +11,10 @@ pos_proposals, neg_proposals = extract_dataset(dataset, data_type, scene_id) # T
 all_pos_proposals = [item for sublist in pos_proposals for item in sublist]
 all_neg_proposals = [item for sublist in neg_proposals for item in sublist]
 
-template_paths = "datasets/bop23_challenge/datasets/templates_pyrender/icbin_720/obj_obj_000001/*.png"
+import pickle
 
-template_poses_path = "datasets/bop23_challenge/datasets/templates_pyrender/icbin_720/obj_poses.npy"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = ContrastiveModel(device)
+with open('contrastive_learning/all_pos_proposals.pkl', 'wb') as file:
+    pickle.dump(all_pos_proposals, file)
 
-train(device = device, model= model, template_paths=template_paths, template_poses_path=template_poses_path,
-    all_pos_proposals=all_pos_proposals, all_neg_proposals=all_neg_proposals)
+with open('contrastive_learning/all_neg_proposals.pkl', 'wb') as file:
+    pickle.dump(all_neg_proposals, file)

@@ -26,7 +26,7 @@ dependencies:
     - hydra-colorlog
     - hydra-core
     - gdown
-    - pytorch-lightning==1.8.1
+    # - pytorch-lightning==1.8.1
     - pandas
     - ruamel.yaml
     - pyrender
