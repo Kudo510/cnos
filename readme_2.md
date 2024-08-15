@@ -5,6 +5,9 @@
     cnos_analysis_4.ipynb - code for checking cnos code for mutiple objects - from 2 objects to see if the features work like top images are from correct object
     cnos_analysis_5.ipynb - final code check for cnos after 23th layer with all cases , occulsion, etc 
     cnos_analysis_6.ipynb - real final code ( using the test_an_image_step in cnos) - so use the inferece.py code not the custom one to test on single iamge- see the results look better now without any overlapping
+    cnos_analysis_8.ipynb - cnos with contrastive learning - not compare features with cosin similarity - using NN for that instead- compare with 42 templates if the loss smaller than threshold means it is positive- out of 42 templates if there are a positive pair the proposal will be chosen
+
+
     approach_first_check.ipynb: 
         Check the first approach by extracting features from dinov2_l14 at the last layer then retrieve the templates with highest score - see if the templates has similar poses to the input  
     approach_second_check.ipynb: 
@@ -44,7 +47,7 @@
     In cnos_analysis_4.ipynb - output folder will be in foundpose_analysis folder
     fro real images- use lower templates since we have less images - just 162 are enough I believe
 # Create templates from CAD models 
-    python -m src.scripts.render_template_with_pyrender level=2 # 0 is for 42 templates, 3 for 2562 templates
+    python -m src.scripts.render_template_with_pyrender level=1 # 0 is for 42 templates, 3 for 2562 templates
     Templates will be save in the folder templates_pyrender
     10* that [50:450, 150:500, :3] for templates will return better zoomed-in templates - Do that
 

@@ -365,17 +365,16 @@ class ContrastiveLoss(nn.Module):
     def forward(self, output1, output2, label):
         # Calculate Euclidean distance
         euclidean_distance = nn.functional.pairwise_distance(output1, output2)
-
         # Calculate loss
         loss_contrastive = torch.mean(
-            (1 - label) * torch.pow(euclidean_distance, 2) +
-            label * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
+            label * torch.pow(euclidean_distance, 2) +
+            (1 - label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
         )
 
         return loss_contrastive
 
 
-def train(device, model, template_paths, template_poses_path, all_pos_proposals, all_neg_proposals):
+def train(device, model, template_paths, template_poses_path, all_pos_proposals, all_neg_proposals, num_epochs):
 
     model = model.to(device)
     criterion = ContrastiveLoss()
@@ -412,11 +411,10 @@ def train(device, model, template_paths, template_poses_path, all_pos_proposals,
     test_dataset = PairedDataset(test_postive_pairs + test_negative_pairs, transform=transform)
 
     train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=4, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, num_workers=1)
+    test_loader = DataLoader(test_dataset, batch_size=4, shuffle=True, num_workers=1)
 
     # Training loop
-    num_epochs = 10
     best_val_loss = float('inf')
     for epoch in trange(int(num_epochs), desc="Training"):
         train_loss = 0.0
@@ -431,10 +429,10 @@ def train(device, model, template_paths, template_poses_path, all_pos_proposals,
             loss.backward()
             optimizer.step()
         print(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss:.5f}")
-        if epoch %1 == 0:
+        if epoch %5 == 0:
             torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/model_checkpoint'+str(epoch)+'.pth')
 
-        if epoch %1 == 0:
+        if epoch %3 == 0:
             # Validation
             val_loss = 0.0
             model.eval()  #

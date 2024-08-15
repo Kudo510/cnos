@@ -38,6 +38,14 @@ from src.model.utils import BatchedData, Detections, convert_npz_to_json
 from src.utils.bbox_utils import CropResizePad
 from src.utils.inout import save_json_bop23, load_json
 
+from tqdm import tqdm
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+import torchvision.transforms as transforms
+import torch.nn as nn
+
+from src.model.constrastive_learning import ContrastiveLoss, ContrastiveModel, resize_and_pad_image
 
 # set level logging
 logging.basicConfig(level=logging.INFO)
@@ -185,6 +193,41 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
     print("Average score:", rounded_avg_score)
 
     return
+
+
+def calculate_contrastive_loss(best_model_path, crop_rgb, templates, device):
+    '''
+    Use Model to get features then compare using the pairwisedistance'''
+    model = ContrastiveModel(device)
+    model.load_state_dict(torch.load(best_model_path))
+    model = model.to(device)
+    # criterion = ContrastiveLoss()
+
+    temp_template = np.array(Image.open("datasets/bop23_challenge/datasets/templates_pyrender/icbin/obj_000001/000108.png"))[:,:,:3]/255.0
+    # img2 = resize_and_pad_image(transform(temp_template), target_max=224).unsqueeze(0).float().to(device)
+    img1 = crop_rgb # Must be normalized with size of 3, 224,224 and in torch
+
+    for i, temp in enumerate(templates):
+        # img1 = resize_and_pad_image(transform(proposal), target_max=224).unsqueeze(0).float().to(device)
+        img2 = temp
+        model.eval()
+        with torch.no_grad():
+            correct, total = 0, 0
+            test_loss = 0.0
+            
+            output1_test, output2_test = model(img1), model(img2)
+            
+            euclidean_distance = nn.functional.pairwise_distance(output1_test, output2_test).cpu().detach()
+            
+            print(f"Dissimilarity score: {euclidean_distance}")
+            plt.figure(figsize=(10, 5))
+            plt.subplot(1, 2, 1)
+            plt.imshow(crop_rgb)
+            plt.axis('off')
+            plt.subplot(1, 2, 2)
+            plt.imshow(temp)
+            plt.axis('off')
+            plt.show()
 
 
 def modified_cnos_crop_feature_extraction(crop_rgb, dino_model, device):
