@@ -197,19 +197,25 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
 
 def calculate_contrastive_loss(best_model_path, crop_rgb, templates, device):
     '''
-    Use Model to get features then compare using the pairwisedistance'''
+    Use Model to get features then compare using the pairwisedistance
+    '''
+
+    transform = T.Compose(
+        [
+            # transforms.Lambda(lambda x: x / 255.0),  # Ensures the scaling by 255.0
+            T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
     model = ContrastiveModel(device)
     model.load_state_dict(torch.load(best_model_path))
     model = model.to(device)
-    # criterion = ContrastiveLoss()
-
-    temp_template = np.array(Image.open("datasets/bop23_challenge/datasets/templates_pyrender/icbin/obj_000001/000108.png"))[:,:,:3]/255.0
-    # img2 = resize_and_pad_image(transform(temp_template), target_max=224).unsqueeze(0).float().to(device)
-    img1 = crop_rgb # Must be normalized with size of 3, 224,224 and in torch
+    img1 = resize_and_pad_image(transform(crop_rgb), target_max=224).unsqueeze(0).float().to(device) # Must be normalized with size of 3, 224,224 and in torch
 
     for i, temp in enumerate(templates):
-        # img1 = resize_and_pad_image(transform(proposal), target_max=224).unsqueeze(0).float().to(device)
-        img2 = temp
+        img2 = resize_and_pad_image(transform(temp/255.0)).unsqueeze(0).float().to(device)
+
         model.eval()
         with torch.no_grad():
             correct, total = 0, 0

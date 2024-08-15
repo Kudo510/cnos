@@ -428,6 +428,7 @@ def train(device, model, template_paths, template_poses_path, all_pos_proposals,
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            del img1, img2, label, batch
         print(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss:.5f}")
         if epoch %5 == 0:
             torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/model_checkpoint'+str(epoch)+'.pth')
@@ -443,6 +444,7 @@ def train(device, model, template_paths, template_poses_path, all_pos_proposals,
                     output1_val, output2_val = model(img1_val), model(img2_val)
                     loss = criterion(output1_val, output2_val, label_val)
                     val_loss += loss.detach().cpu().item() / len(val_loader)
+                    del img1_val, img2_val, label_val, batch_val
             print(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss:.5f}")
             # Check if the validation loss is better than the best validation loss so far
             if val_loss < best_val_loss:
