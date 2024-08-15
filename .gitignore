@@ -177,3 +177,5 @@ foundpose_analysis/
 datasets/
 foundpose_analysis/ycbv/templates/synthetic_images_templates/
 output_cnos_analysis_5/
+contrastive_learning/all_neg_proposals.pkl
+contrastive_learning/all_pos_proposals.pkl
