@@ -180,3 +180,4 @@ output_cnos_analysis_5/
 contrastive_learning/all_neg_proposals.pkl
 contrastive_learning/all_pos_proposals.pkl
 contrastive_learning/saved_checkpoints/
+wandb/

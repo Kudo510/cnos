@@ -77,6 +77,9 @@ class BOPTemplatePBR(BaseBOP):
         return len(self.obj_ids)
 
     def load_metaData(self, reset_metaData): # reset_metaData =True
+        '''
+        Extract all info , put into a json file
+        '''
         start_time = time.time()
         metaData = {
             "scene_id": [],
@@ -213,6 +216,7 @@ class BOPTemplatePBR(BaseBOP):
             (idx + 1) * len(self.template_poses),
         ) # basically the range is 42*idx to 42*(id+1) - so we have 42 indices for the indx_range
 
+        poses = [] # poses of templates
         for i in idx_range:
             rgb_path = self.metaData.iloc[i].rgb_path
             obj_id = self.metaData.iloc[i].obj_id
@@ -220,6 +224,7 @@ class BOPTemplatePBR(BaseBOP):
             idx_obj = self.metaData.iloc[i].idx_obj
             scene_id = self.metaData.iloc[i].scene_id
             frame_id = self.metaData.iloc[i].frame_id
+            pose = self.metaData.iloc[i].obj_poses
             mask_path = osp.join(
                 self.root_dir,
                 self.split,
@@ -235,6 +240,7 @@ class BOPTemplatePBR(BaseBOP):
             boxes.append(mask.getbbox())
             image = torch.from_numpy(np.array(masked_rgb.convert("RGB")) / 255).float()
             templates.append(image)
+            poses.append(pose)
 
         assert (
             len(np.unique(obj_ids)) == 1
@@ -246,6 +252,7 @@ class BOPTemplatePBR(BaseBOP):
         return {
             "templates": self.rgb_transform(templates_croped),
             "original_templates": templates_croped,
+            "poses" : poses
             } # to normalize the template # 
         # return {"templates": templates_croped} # to normalize the template # 
         ### see at the end we get 42 templates for each idx/object id - we will get 42*7 as df with all information s.t scnene id, frame id, poses for the tempaltes. for icbin we only have 2 indices , cos we have only 2 cad models/object in icbin
