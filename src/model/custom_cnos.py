@@ -195,9 +195,10 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
     return
 
 
-def calculate_contrastive_loss(best_model_path, crop_rgb, templates, device):
+def check_similarity(best_model_path, crop_rgb, templates, device):
     '''
-    Use Model to get features then compare using the pairwisedistance
+    Use Model to check if the 2 images are similar 
+    1 yes, 0 no
     '''
 
     transform = T.Compose(
