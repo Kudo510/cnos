@@ -9,6 +9,7 @@ import sys
 import time
 from functools import partial
 from types import SimpleNamespace
+import random
 
 import cv2
 import distinctipy
@@ -32,7 +33,7 @@ from torchvision.io import read_image
 from torchvision.ops import masks_to_boxes
 
 from segment_anything.utils.amg import rle_to_mask
-from src.model.foundpose import resize_and_pad_image
+# from src.model.foundpose import resize_and_pad_image
 from src.model.loss import PairwiseSimilarity, Similarity
 from src.model.utils import BatchedData, Detections, convert_npz_to_json
 from src.utils.bbox_utils import CropResizePad
@@ -45,7 +46,7 @@ from PIL import Image
 import torchvision.transforms as transforms
 import torch.nn as nn
 
-from src.model.constrastive_learning import ContrastiveLoss, ContrastiveModel, resize_and_pad_image
+from src.model.constrastive_learning import ContrastiveModel, resize_and_pad_image
 
 # set level logging
 logging.basicConfig(level=logging.INFO)
@@ -204,7 +205,7 @@ def check_similarity(best_model_path, crop_rgb, templates, device):
     transform = T.Compose(
         [
             # transforms.Lambda(lambda x: x / 255.0),  # Ensures the scaling by 255.0
-            T.ToTensor(),
+            # T.ToTensor(),
             T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ]
     )
@@ -212,29 +213,71 @@ def check_similarity(best_model_path, crop_rgb, templates, device):
     model = ContrastiveModel(device)
     model.load_state_dict(torch.load(best_model_path))
     model = model.to(device)
-    img1 = resize_and_pad_image(transform(crop_rgb), target_max=224).unsqueeze(0).float().to(device) # Must be normalized with size of 3, 224,224 and in torch
+    img1 = transform(resize_and_pad_image(crop_rgb, target_max=224)).unsqueeze(0).float().to(device) # Must be normalized with size of 3, 224,224 and in torch
 
-    for i, temp in enumerate(templates):
-        img2 = resize_and_pad_image(transform(temp/255.0)).unsqueeze(0).float().to(device)
+    for i, temp in enumerate(templates[:]):
+        img2 = transform(resize_and_pad_image(np.transpose(temp, (2,0,1)))).unsqueeze(0).float().to(device)
 
         model.eval()
         with torch.no_grad():
             correct, total = 0, 0
             test_loss = 0.0
             
-            output1_test, output2_test = model(img1), model(img2)
-            
-            euclidean_distance = nn.functional.pairwise_distance(output1_test, output2_test).cpu().detach()
-            
-            print(f"Dissimilarity score: {euclidean_distance}")
-            plt.figure(figsize=(10, 5))
-            plt.subplot(1, 2, 1)
-            plt.imshow(crop_rgb)
-            plt.axis('off')
-            plt.subplot(1, 2, 2)
-            plt.imshow(temp)
-            plt.axis('off')
-            plt.show()
+            outputs_test = model(img1, img2)
+            _, predicted = torch.max(outputs_test.cpu(), 1)     
+
+            print(f"Prediction: {predicted}")
+            # plt.figure(figsize=(10, 5))
+            # plt.subplot(1, 2, 1)
+            # plt.imshow(np.transpose(crop_rgb, (1,2,0)))
+            # plt.axis('off')
+            # plt.subplot(1, 2, 2)
+            # plt.imshow(temp)
+            # plt.axis('off')
+            # plt.show()
+
+def check_similarity_2(best_model_path, crop_rgb, templates, device):
+    '''
+    Use Model to check if the 2 images are similar  but for multiple templates at the same time - then check if one of the prediction = 1 then it means that 
+    1 yes, 0 no
+    '''
+    transform = T.Compose(
+        [
+            # transforms.Lambda(lambda x: x / 255.0),  # Ensures the scaling by 255.0
+            # T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+    model = ContrastiveModel(device)
+    model.load_state_dict(torch.load(best_model_path))
+    model = model.to(device)
+
+    transformed_temps = []
+    for i, temp in enumerate(templates[:]):
+        img2 = transform(resize_and_pad_image(np.transpose(temp, (2,0,1)))).float().to(device)
+        transformed_temps.append(img2)
+    # Randomly select 5 unique images
+    selected_temps = random.sample(transformed_temps, 5)
+    # Stack the selected images to create a tensor of shape (5, 2, 224, 224)
+    stacked_temps = torch.stack(selected_temps)
+
+    # Convert from 1,3,224,224 to 162,3,224,224 - but 162 is too much -try with 5 templates only
+    img1 = transform(resize_and_pad_image(crop_rgb, target_max=224)).unsqueeze(0).float().to(device) # Must be normalized with size of 3, 224,224 and in torch
+    stacked_img1 = img1.repeat(5,1,1,1)
+
+    model.eval()
+    with torch.no_grad():
+        correct, total = 0, 0
+        test_loss = 0.0
+        
+        outputs_test = model(stacked_img1, stacked_temps)
+        _, predicted = torch.max(outputs_test.cpu(), 1)     
+
+        print(f"Prediction: {predicted}")
+
+    result = 1 if (predicted == 1).any() else 0
+    return result
 
 
 def modified_cnos_crop_feature_extraction(crop_rgb, dino_model, device):

@@ -637,8 +637,11 @@ def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_
     )
 
     template_paths = sorted(glob.glob(template_paths))
-    with open(template_poses_path, 'rb') as file:
-        template_poses = np.array(pickle.load(file))
+    # with open(template_poses_path, 'rb') as file:
+    #     template_poses = np.array(pickle.load(file))
+
+    # For pyrender templates
+    template_poses = np.load(template_poses_path)
 
     templates = {
         "rgb" : [np.array(Image.open(template_path).convert("RGB"))/255.0 for template_path in template_paths],
