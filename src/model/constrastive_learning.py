@@ -433,7 +433,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
 
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in frame_paths[:1]: # only take 200 out of 1000 frames
+    for frame_path in frame_paths[:100]: # only take 200 out of 1000 frames
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
         
@@ -456,41 +456,42 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
 
         best_mask_indices = []
         pos_proposals = []
+        pred_is_inside_indices = []
         for selected_obj in selected_obj_list:
-
-            best_mask_index = -1
-
             for i, mask_pred in enumerate(masks_pred["masks"]):
                 mask_gt = (np.array(Image.open(selected_obj["mask_visib_path"]).convert("L"))>0).astype(int)
 
                 pred_diff, pred_is_inside = _is_mask1_inside_mask2(mask_pred, mask_gt)
                 gt_diff, gt_is_inside = _is_mask1_inside_mask2(mask_gt, mask_pred)
-                log.info(f"Difference between mask {selected_obj['mask_visib_path'].split('/')[-1]} and proposal index {i} is {pred_diff, gt_diff}")
+                # log.info(f"Difference between mask {selected_obj['mask_visib_path'].split('/')[-1]} and proposal index {i} is {pred_diff, gt_diff}")
                 if pred_is_inside or gt_is_inside:
-                    best_mask_index = i
-                    best_mask_indices.append(best_mask_index)
+                    best_mask_indices.append(i)
                     # pos_proposal rgb from prediction and pose from gt
                     pos_proposal = {
-                        "idx" : best_mask_index,
-                        "rgb": np.array(masks_pred["rgb"][best_mask_index])/255.0,
+                        "idx" : i,
+                        "rgb": np.array(masks_pred["rgb"][i])/255.0,
                         "pose": selected_obj["pose"]
                     }
                     pos_proposals.append(pos_proposal)
+
+                if pred_diff ==0:
+                    pred_is_inside_indices.append(i)
                 
-            log.info(f"For frame {frame_path.split('/')[-1]}, the best for mask {selected_obj['mask_visib_path'].split('/')[-1]} is at index {best_mask_index} ")      
+            # log.info(f"For frame {frame_path.split('/')[-1]}, the best for mask {selected_obj['mask_visib_path'].split('/')[-1]} is at index {best_mask_index} ")      
         
         best_mask_indices = list(set(best_mask_indices))
+        pred_is_inside_indices = list(set(pred_is_inside_indices))
         final_pos_proposals = [{
             "idx": i,
             "rgb": next((pos["rgb"] for pos in pos_proposals if pos["idx"] == i), None),
             "pose": next((pos["pose"] for pos in pos_proposals if pos["idx"] == i), None)
-        } for i in best_mask_indices]
+        } for i in best_mask_indices] # change to best_mask_indices for threhold 100
        
         del detections
     
         all_pos_proposals.append(final_pos_proposals)
         all_neg_proposals.append([np.array(masked_images[j])/255.0 for j in range(len(masked_images)) if j not in best_mask_indices])
-        log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
+        log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(final_pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
 
     return all_pos_proposals, all_neg_proposals, best_mask_indices
 
