@@ -751,5 +751,3 @@ def custom_visualize_2(dataset_name, rgb_path, dets) -> None:
         #     logging.info(f"Saving {save_path}")
         # counter+=1
     return concat
-
- 

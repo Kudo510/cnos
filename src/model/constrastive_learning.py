@@ -433,7 +433,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
 
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in frame_paths[:100]: # only take 200 out of 1000 frames
+    for frame_path in frame_paths[:300]: # only take 200 out of 1000 frames
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
         
@@ -474,7 +474,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
                     }
                     pos_proposals.append(pos_proposal)
 
-                if pred_diff ==0:
+                if pred_diff == 0:
                     pred_is_inside_indices.append(i)
                 
             # log.info(f"For frame {frame_path.split('/')[-1]}, the best for mask {selected_obj['mask_visib_path'].split('/')[-1]} is at index {best_mask_index} ")      
@@ -485,7 +485,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
             "idx": i,
             "rgb": next((pos["rgb"] for pos in pos_proposals if pos["idx"] == i), None),
             "pose": next((pos["pose"] for pos in pos_proposals if pos["idx"] == i), None)
-        } for i in best_mask_indices] # change to best_mask_indices for threhold 100
+        } for i in pred_is_inside_indices] # change to best_mask_indices for threhold 100
        
         del detections
     
