@@ -634,17 +634,30 @@ class ContrastiveModel(nn.Module):
 
 #         return loss_contrastive
 
+class MultiRotate(object):
+    def __init__(self, angles):
+        self.angles = angles
+
+    def __call__(self, img):
+        angle = random.choice(self.angles)
+        return transforms.functional.rotate(img, angle)
+
+
 def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_neg_proposals):
 
     # Data loading and preprocessing
     sigma_range = (0.5, 2.0)
+    rotation_angles = [30, 60, 90, 120, 150]
     transform = transforms.Compose(
         [
             transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            transforms.GaussianBlur(kernel_size=(5, 5), sigma=sigma_range), 
-            transforms.ColorJitter(brightness=(1.1, 1.5)),
-            transforms.ColorJitter(brightness=(0.5, 0.9)),
-            transforms.RandomAutocontrast(p=1)
+            # transforms.GaussianBlur(kernel_size=(5, 5), sigma=sigma_range), 
+            transforms.ColorJitter(brightness=(1.1, 1.2)),
+            transforms.ColorJitter(brightness=(0.7, 0.9)),
+            # transforms.RandomAutocontrast(p=1)
+            transforms.RandomHorizontalFlip(),  # Random horizontal flip
+            transforms.RandomVerticalFlip(),  # Random horizontal flip
+            MultiRotate(rotation_angles),  # Custom MultiRotate transformation
 
         ]
     )
