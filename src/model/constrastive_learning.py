@@ -99,7 +99,7 @@ def geodesic_numpy(R1, R2):
 
 def extract_positive_pairs(all_pos_proposals, templates):
     pos_pairs = list()
-    for proposals_id in range(len(all_pos_proposals)):
+    for proposals_id in trange(len(all_pos_proposals)):
         obj_query_pose = all_pos_proposals[proposals_id]["pose"][None]
         obj_template_poses = templates["poses"]
 
@@ -175,7 +175,7 @@ def extract_negative_pairs_2(all_neg_proposals, all_pos_proposals, templates):
     copied_templates = templates["rgb"].copy()
 
     neg_pairs = list()
-    for neg_prop in selected_neg_proposals:
+    for neg_prop in tqdm(selected_neg_proposals):
         selected_temp_index = random.randint(0, len(copied_templates) - 1)
         selected_temp = copied_templates[selected_temp_index]
         # del copied_templates[selected_temp_index]
@@ -433,7 +433,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
 
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in frame_paths[:300]: # only take 200 out of 1000 frames
+    for frame_path in tqdm(frame_paths[:100]): # only take 200 out of 1000 frames
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
         
@@ -474,7 +474,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
                     }
                     pos_proposals.append(pos_proposal)
 
-                if pred_diff == 0:
+                if pred_diff <= 100:
                     pred_is_inside_indices.append(i)
                 
             # log.info(f"For frame {frame_path.split('/')[-1]}, the best for mask {selected_obj['mask_visib_path'].split('/')[-1]} is at index {best_mask_index} ")      
@@ -650,11 +650,12 @@ def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_
     )
 
     template_paths = sorted(glob.glob(template_paths))
-    # with open(template_poses_path, 'rb') as file:
-    #     template_poses = np.array(pickle.load(file))
+    # For train_pbr templates
+    with open(template_poses_path, 'rb') as file:
+        template_poses = np.array(pickle.load(file))
 
-    # For pyrender templates
-    template_poses = np.load(template_poses_path)
+    # # For pyrender templates
+    # template_poses = np.load(template_poses_path)
 
     templates = {
         "rgb" : [np.array(Image.open(template_path).convert("RGB"))/255.0 for template_path in template_paths],
