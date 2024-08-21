@@ -586,22 +586,22 @@ def custom_detections_2(sam_detections, idx_selected_proposals, file_path, scene
         convert_npz_to_json,
         list_npz_paths=result_paths,
     )
-    detections = list(
-        tqdm(
-            pool.imap_unordered(
-                convert_npz_to_json_with_idx, range(len(result_paths))
-            ),
-            total=len(result_paths),
-            desc="Converting npz to json",
-        )
-    )
-    formatted_detections = []
-    for detection in tqdm(detections, desc="Loading results ..."):
-        formatted_detections.extend(detection)
+    # detections = list(
+    #     tqdm(
+    #         pool.imap_unordered(
+    #             convert_npz_to_json_with_idx, range(len(result_paths))
+    #         ),
+    #         total=len(result_paths),
+    #         desc="Converting npz to json",
+    #     )
+    # )
+    # formatted_detections = []
+    # for detection in tqdm(detections, desc="Loading results ..."):
+    #     formatted_detections.extend(detection)
 
-    detections_path = f"{file_path}.json"
-    save_json_bop23(detections_path, formatted_detections)
-    print(f"Saved predictions to {detections_path}")
+    # detections_path = f"{file_path}.json"
+    # save_json_bop23(detections_path, formatted_detections)
+    # print(f"Saved predictions to {detections_path}")
 
 
 def custom_visualize(input_file, dataset_name, rgb_path) -> None:
