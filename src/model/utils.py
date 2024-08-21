@@ -176,29 +176,6 @@ class Detections:
         save_npz(file_path, results)
         if return_results:
             return results
-    
-    def save_to_file_2(
-        self, scene_id, frame_id, runtime, file_path, dataset_name, return_results=False
-    ):
-        """
-        save to file but for contrastive model
-        scene_id, image_id, category_id, bbox, time
-        """
-        boxes = xyxy_to_xywh(self.boxes)
-        results = {
-            "scene_id": scene_id,
-            "image_id": frame_id,
-            "category_id": self.object_ids + 1
-            if dataset_name != "lmo"
-            else lmo_object_ids[self.object_ids],
-            # "score": self.scores,
-            "bbox": boxes,
-            "time": runtime,
-            "segmentation": self.masks,
-        }
-        save_npz(file_path, results)
-        if return_results:
-            return results
 
     def load_from_file(self, file_path):
         data = np.load(file_path)
