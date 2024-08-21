@@ -185,4 +185,6 @@ contrastive_learning/train_pbr_pos_proposals.pkl
 contrastive_learning/train_pbr_neg_proposals.pkl
 contrastive_learning/saved_checkpoints/
 wandb/
+contrastive_learning/best_model_checkpoint_train_pbr.
+contrastive_learning/datasets/
 contrastive_learning/best_model_checkpoint_train_pbr.pth

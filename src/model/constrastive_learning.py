@@ -376,6 +376,7 @@ def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=100):
     
     # Check if mask1 is entirely inside mask2
     intersection = np.bitwise_and(mask1, mask2)
+    intersection_2 = np.logical_and(mask1, mask2)
     difference = np.sum(mask1) - np.sum(intersection)
     
     # Allow for some noise
@@ -386,7 +387,8 @@ def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=100):
 def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # data_type test or train 
     '''
     For train_pbr folder not test as in extract_dataset
-    Positive crops are the one with 
+    Use for sam proposals
+    Positive crops are the inside the gt mask but noise of 100
     '''
     model_type = "vit_h"
     checkpoint_dir =  "datasets/bop23_challenge/pretrained/segment-anything"
@@ -432,7 +434,8 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
 
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in frame_paths[:2]: # only take 200 out of 1000 frames
+    for frame_path in frame_paths[:1]: # only take 200 out of 1000 frames
+        log.info(f"Frame image: {frame_path.split('/')[-1]}")
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
         
@@ -443,7 +446,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
             masked_image = extract_object_by_mask(rgb, binary_mask)
             masked_images.append(masked_image)
 
-        # Find visib_mask path based on obj_dicts
+        # Find visib_mask path based on obj_dicts - here we want only the masks for obj_id 1
         obj_id = 1
         selected_obj_list = find_visib_mask_path(obj_dicts, frame_path) # the contains the mask of object id 1 and frame_path
         # mask_paths = sorted(glob.glob(visib_mask_paths))
@@ -621,17 +624,29 @@ class ContrastiveModel(nn.Module):
 
 #         return loss_contrastive
 
+class MultiRotate(object):
+    def __init__(self, angles):
+        self.angles = angles
+
+    def __call__(self, img):
+        angle = random.choice(self.angles)
+        return transforms.functional.rotate(img, angle)
+    
 def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_neg_proposals):
 
     # Data loading and preprocessing
     sigma_range = (0.5, 2.0)
+    rotation_angles = [30, 60, 90, 120, 150]
     transform = transforms.Compose(
         [
             transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             transforms.GaussianBlur(kernel_size=(5, 5), sigma=sigma_range), 
             transforms.ColorJitter(brightness=(1.1, 1.5)),
             transforms.ColorJitter(brightness=(0.5, 0.9)),
-            transforms.RandomAutocontrast(p=1)
+            transforms.RandomAutocontrast(p=1),
+            transforms.RandomHorizontalFlip(),  # Random horizontal flip
+            transforms.RandomVerticalFlip(),  # Random horizontal flip
+            MultiRotate(rotation_angles),  # Custom MultiRotate transformation
 
         ]
     )
