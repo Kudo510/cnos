@@ -276,7 +276,7 @@ def check_similarity_2(best_model_path, crop_rgb, templates, device):
 
         print(f"Prediction: {predicted}")
 
-    result = True if (predicted == 1).any() else False
+    result = torch.sum(predicted) >= 3
     return result
 
 

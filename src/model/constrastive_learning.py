@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from tqdm import tqdm, trange
 import pickle
 import wandb
+from torchvision.ops.boxes import batched_nms, box_area
 
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
 
@@ -384,6 +385,18 @@ def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=100):
     # return difference <= noise_threshold
 
 
+def _remove_very_small_detections(masks, boxes): # after this step only valid boxes, masks are saved, other are filtered out
+        min_box_size = 0.05 # relative to image size 
+        min_mask_size = 4e-4 # relative to image size
+        img_area = masks.shape[1] * masks.shape[2]
+        box_areas = box_area(boxes) / img_area
+        mask_areas = masks.sum(dim=(1, 2)) / img_area
+        keep_idxs = torch.logical_and(
+            box_areas > min_box_size**2, mask_areas > min_mask_size
+        )
+        indices = torch.nonzero(keep_idxs).squeeze().tolist()
+        return indices
+
 def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # data_type test or train 
     '''
     For train_pbr folder not test as in extract_dataset
@@ -433,12 +446,15 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
 
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in tqdm(frame_paths[:100]): # only take 200 out of 1000 frames
+    for frame_path in tqdm(frame_paths[:200]): # only take 200 out of 1000 frames
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
-        
+        keep_ids = _remove_very_small_detections(detections["masks"], detections["boxes"])
+
+        selected_masks = [detections["masks"][i].cpu() for i in keep_ids]
+        log.info(f"Keeping only {len(selected_masks)} from {detections['masks'].shape[0]} masks")
         masked_images = []
-        for mask in detections["masks"].cpu():
+        for mask in selected_masks:
             binary_mask = np.array(mask) * 255
             binary_mask = binary_mask.astype(np.uint8)
             masked_image = extract_object_by_mask(rgb, binary_mask)
@@ -450,7 +466,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
         # mask_paths = sorted(glob.glob(visib_mask_paths))
 
         masks_pred = {
-            "masks" : [np.array(mask.cpu()).astype(int) for mask in detections["masks"]],
+            "masks" : [np.array(mask.cpu()).astype(int) for mask in selected_masks],
             "rgb" : [rgb for rgb in masked_images]
         }
 
