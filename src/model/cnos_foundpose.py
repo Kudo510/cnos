@@ -155,8 +155,8 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
     
     foundpose_average_scores = list()
     foundpose_top_5_scores = list()
-    # for i in range(len(masked_images)):
-    for i in range(0,2):
+    for i in range(len(masked_images)):
+    # for i in range(0,2):
         crop_rgb = np.array( masked_images[i]) # (124, 157, 3)
         rounded_avg_score, rounded_scores = _bow_retrieval(crop_rgb, syn_templates, syn_valid_patch_features, syn_num_valid_patches, dino_model=dinov2_vitl14, device=device)
         foundpose_average_scores.append(rounded_avg_score)
