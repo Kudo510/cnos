@@ -105,6 +105,16 @@ def resize_and_pad_image(image, target_max=420):
         )
     else:
         scaled_padded_image = scaled_image
+    
+    if scaled_padded_image.shape[1] == 29:
+        scaled_padded_image = F.pad(scaled_padded_image, (0, 1, 0, 1), mode='constant', value=0)
+    
+    if scaled_padded_image.shape[-1] == 223:
+        scaled_padded_image = F.pad(scaled_padded_image, (0, 1, 0, 1), mode='constant', value=0)
+        
+    if scaled_padded_image.shape[-1] == 419:
+        scaled_padded_image = F.pad(scaled_padded_image, (0, 1, 0, 1), mode='constant', value=0)
+        
     return scaled_padded_image
 
 
@@ -646,36 +656,36 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
     for idx in similar_template_indices[0]:
            similar_templates.append(templates[idx])
 
-    # Display the crop
-    plt.imshow(crop_rgb)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # # Display the crop
+    # plt.imshow(crop_rgb)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     # Round up to two decimal places
     rounded_scores = [math.ceil(score * 1000) / 1000 for score in similar_scores[0]]
     rounded_avg_score = math.ceil(score_per_detection.item() * 1000) / 1000
 
-    width = 50
-    height = 50
-    fig = plt.figure(figsize=(7, 7))
-    columns = 3
-    rows = 2
+    # width = 50
+    # height = 50
+    # fig = plt.figure(figsize=(7, 7))
+    # columns = 3
+    # rows = 2
 
-    for index, template in enumerate(similar_templates):
-        fig.add_subplot(rows, columns, index + 1)
-        img = template # transpose(1, 2, 0)
-        plt.imshow(img)
-        plt.axis('off')
-        plt.title(f'Top Template {similar_template_indices[0][index]}')
+    # for index, template in enumerate(similar_templates):
+    #     fig.add_subplot(rows, columns, index + 1)
+    #     img = template # transpose(1, 2, 0)
+    #     plt.imshow(img)
+    #     plt.axis('off')
+    #     plt.title(f'Top Template {similar_template_indices[0][index]}')
 
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
 
     # Print the results
-    print("Top 5 scores:", rounded_scores)
-    print("Average score:", rounded_avg_score)
+    # print("Top 5 scores:", rounded_scores)
+    # print("Average score:", rounded_avg_score)
 
-    return
+    return rounded_avg_score, rounded_scores
 
 
 # Code for first approach check

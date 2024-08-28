@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tqdm import tqdm, trange
 import pickle
-import wandb
+# import wandb
 from torchvision.ops.boxes import batched_nms, box_area
 
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
@@ -177,6 +177,37 @@ def extract_negative_pairs_2(all_neg_proposals, all_pos_proposals, templates):
 
     neg_pairs = list()
     for neg_prop in tqdm(selected_neg_proposals):
+        selected_temp_index = random.randint(0, len(copied_templates) - 1)
+        selected_temp = copied_templates[selected_temp_index]
+        # del copied_templates[selected_temp_index]
+
+        d, x, y = np.transpose(neg_prop, (2,0,1)).shape
+        log.info(f"Size of neg proposal: {d,x,y}")
+        if d ==0 or x == 0 or y ==0:
+            continue
+
+        neg_pair = {
+            "img1" : resize_and_pad_image(np.transpose(neg_prop, (2,0,1)), target_max=224), 
+            "img2" : resize_and_pad_image(np.transpose(selected_temp, (2,0,1)), target_max=224),
+            "label" : 0
+        }
+
+        assert neg_pair["img1"].shape[-1] == neg_pair["img2"].shape[-1]
+        neg_pairs.append(neg_pair)
+
+    return neg_pairs
+
+
+def extract_negative_pairs_3(all_neg_proposals, templates):
+    '''
+    the one used for sam proposals
+    use all negative proposals not jsut equal number of positive propsals- accept the imbalance
+    '''
+    
+    copied_templates = templates["rgb"].copy()
+
+    neg_pairs = list()
+    for neg_prop in tqdm(all_neg_proposals):
         selected_temp_index = random.randint(0, len(copied_templates) - 1)
         selected_temp = copied_templates[selected_temp_index]
         # del copied_templates[selected_temp_index]
@@ -506,7 +537,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
         del detections
     
         all_pos_proposals.append(final_pos_proposals)
-        all_neg_proposals.append([np.array(masked_images[j])/255.0 for j in range(len(masked_images)) if j not in best_mask_indices])
+        all_neg_proposals.append([np.array(masked_images[j])/255.0 for j in range(len(masked_images)) if j not in pred_is_inside_indices])
         log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(final_pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
 
     return all_pos_proposals, all_neg_proposals, best_mask_indices
@@ -616,8 +647,8 @@ class ContrastiveModel(nn.Module):
         self.dinov2_vitl14 = dinov2_vitl14
 
         # 2 classes: similar or dissimilar
-        self.fc1 = nn.Linear(2048, 512)
-        self.fc = nn.Linear(512, 2)
+        self.fc1 = nn.Linear(2048, 64)
+        self.fc2 = nn.Linear(64, 1)
 
     def forward_one(self, x):
         x = self.dinov2_vitl14(x)
@@ -628,8 +659,9 @@ class ContrastiveModel(nn.Module):
         output1 = self.forward_one(input1)
         output2 = self.forward_one(input2)
         output = torch.cat((output1, output2),1)
-        output = F.relu(self.fc1(output))
-        output = self.fc(output)
+        output = torch.relu(self.fc1(output))
+        output = self.fc2(output)
+        output = torch.sigmoid(output)
         return output
 
 
@@ -647,7 +679,6 @@ class ContrastiveModel(nn.Module):
 #             label * torch.pow(euclidean_distance, 2) +
 #             (1 - label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
 #         )
-
 #         return loss_contrastive
 
 class MultiRotate(object):
@@ -691,7 +722,7 @@ def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_
         "poses" : template_poses
     }
 
-    negative_pairs = extract_negative_pairs_2(all_neg_proposals, all_pos_proposals, templates)
+    negative_pairs = extract_negative_pairs_3(all_neg_proposals, templates)
     postive_pairs = extract_positive_pairs(all_pos_proposals, templates)    
 
     train_postive_pairs, remaining_postive_pairs = train_test_split(postive_pairs, test_size=0.2, random_state=0)
@@ -710,7 +741,7 @@ def train(device, model, train_dataset, val_dataset, test_dataset, num_epochs):
 
     wandb_run = wandb.init(project="cnos_contrastive_learning")
     model = model.to(device)
-    criterion = nn.CrossEntropyLoss() # use a Classification Cross-Entropy loss
+    criterion = nn.BCELoss() # use a Classification Cross-Entropy loss
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
     # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.2)
 
@@ -728,7 +759,7 @@ def train(device, model, train_dataset, val_dataset, test_dataset, num_epochs):
             img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
             outputs = model(img1, img2)
             optimizer.zero_grad()
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs.squeeze(dim=1), labels.float())
             train_loss += loss.detach().cpu().item() / len(train_loader)
             # print(f"train_loss: {train_loss}")
             loss.backward()
@@ -747,7 +778,7 @@ def train(device, model, train_dataset, val_dataset, test_dataset, num_epochs):
                     img1_val, img2_val, label_val = batch_val
                     img1_val, img2_val, label_val = img1_val.to(device), img2_val.to(device), label_val.to(device)
                     outputs_val = model(img1_val, img2_val)
-                    loss = criterion(outputs_val, label_val)
+                    loss = criterion(outputs_val.squeeze(dim=1), label_val.float())
                     val_loss += loss.detach().cpu().item() / len(val_loader)
                     del img1_val, img2_val, label_val, batch_val
             print(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss:.5f}")
@@ -767,21 +798,21 @@ def train(device, model, train_dataset, val_dataset, test_dataset, num_epochs):
             'best_val_loss': best_val_loss
         })
 
-def test(model, test_loader, device):
+# def test(model, test_loader, device):
     
-    model = model.to(device)
-    criterion = ContrastiveLoss()
-    model.eval()
-    with torch.no_grad():
-        correct, total = 0, 0
-        test_loss = 0.0
-        for batch_test in tqdm(test_loader, desc="Testing"):
-            img1_test, img2_test, label_test = batch_test
-            img1_test, img2_test, label_test = img1_test.to(device), img2_test.to(device), label_test.to(device)
-            output1_test, output2_test = model(img1_test), model(img2_test)
-            loss = criterion(output1_test, output2_test, label_test)
-            test_loss += loss.detach().cpu().item() / len(test_loader)
-            # correct += torch.sum(torch.argmax(y_hat_test, dim=1) == y_test).detach().cpu().item()
-            # total += len(x_test)
-        print(f"Test loss: {test_loss:.2f}")
-        # print(f"Test accuracy: {correct / total * 100:.2f}%")
+#     model = model.to(device)
+#     criterion = ContrastiveLoss()
+#     model.eval()
+#     with torch.no_grad():
+#         correct, total = 0, 0
+#         test_loss = 0.0
+#         for batch_test in tqdm(test_loader, desc="Testing"):
+#             img1_test, img2_test, label_test = batch_test
+#             img1_test, img2_test, label_test = img1_test.to(device), img2_test.to(device), label_test.to(device)
+#             output1_test, output2_test = model(img1_test), model(img2_test)
+#             loss = criterion(output1_test, output2_test, label_test)
+#             test_loss += loss.detach().cpu().item() / len(test_loader)
+#             # correct += torch.sum(torch.argmax(y_hat_test, dim=1) == y_test).detach().cpu().item()
+#             # total += len(x_test)
+#         print(f"Test loss: {test_loss:.2f}")
+#         # print(f"Test accuracy: {correct / total * 100:.2f}%")

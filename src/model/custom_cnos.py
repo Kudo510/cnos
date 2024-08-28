@@ -164,36 +164,36 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
     # Check the confidence scores for the similar templates
     similar_scores = scores[:, similar_template_indices[0].to("cpu")]
 
-    # Display the crop
-    plt.imshow(crop_rgb)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # # Display the crop
+    # plt.imshow(crop_rgb)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     # Round up to two decimal places
     rounded_scores = [math.ceil(score * 1000) / 1000 for score in similar_scores[0]]
     rounded_avg_score = math.ceil(score_per_detection.item() * 1000) / 1000
 
-    width = 50
-    height = 50
-    fig = plt.figure(figsize=(7, 7))
-    columns = 3
-    rows = 2
+    # width = 50
+    # height = 50
+    # fig = plt.figure(figsize=(7, 7))
+    # columns = 3
+    # rows = 2
 
-    for i, index in enumerate(similar_template_indices[0]):
-        fig.add_subplot(rows, columns, i + 1)
-        img = templates[index] # permute(1, 2, 0)
-        plt.imshow(img)
-        plt.axis('off')
-        plt.title(f'Top Template {index}')
+    # for i, index in enumerate(similar_template_indices[0]):
+    #     fig.add_subplot(rows, columns, i + 1)
+    #     img = templates[index] # permute(1, 2, 0)
+    #     plt.imshow(img)
+    #     plt.axis('off')
+    #     plt.title(f'Top Template {index}')
 
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
 
     # Print the results
     print("Top 5 scores:", rounded_scores)
     print("Average score:", rounded_avg_score)
 
-    return
+    return rounded_avg_score, rounded_scores
 
 
 def check_similarity(best_model_path, crop_rgb, templates, device):
@@ -224,7 +224,11 @@ def check_similarity(best_model_path, crop_rgb, templates, device):
             test_loss = 0.0
             
             outputs_test = model(img1, img2)
-            _, predicted = torch.max(outputs_test.cpu(), 1)     
+            # _, predicted = torch.max(outputs_test.cpu(), 1)
+            if outputs_test>=0.5:
+                predicted = 1
+            else:
+                predicted = 0     
 
             print(f"Prediction: {predicted}")
             # plt.figure(figsize=(10, 5))
@@ -258,13 +262,14 @@ def check_similarity_2(best_model_path, crop_rgb, templates, device):
         img2 = transform(resize_and_pad_image(np.transpose(temp, (2,0,1)))).float().to(device)
         transformed_temps.append(img2)
     # Randomly select 5 unique images
-    selected_temps = random.sample(transformed_temps, 5)
+    num_templates = 1
+    selected_temps = random.sample(transformed_temps, num_templates)
     # Stack the selected images to create a tensor of shape (5, 2, 224, 224)
     stacked_temps = torch.stack(selected_temps)
 
     # Convert from 1,3,224,224 to 162,3,224,224 - but 162 is too much -try with 5 templates only
     img1 = transform(resize_and_pad_image(crop_rgb, target_max=224)).unsqueeze(0).float().to(device) # Must be normalized with size of 3, 224,224 and in torch
-    stacked_img1 = img1.repeat(5,1,1,1)
+    stacked_img1 = img1.repeat(num_templates,1,1,1)
 
     model.eval()
     with torch.no_grad():
@@ -272,12 +277,76 @@ def check_similarity_2(best_model_path, crop_rgb, templates, device):
         test_loss = 0.0
         
         outputs_test = model(stacked_img1, stacked_temps)
-        _, predicted = torch.max(outputs_test.cpu(), 1)     
+        # _, predicted = torch.max(outputs_test.cpu(), 1)   
+        predicted = (outputs_test.cpu() >= 0.5).int() 
 
-        print(f"Prediction: {predicted}")
+        print(f"Prediction of index{i} is: {outputs_test} as {predicted}")
 
-    result = torch.sum(predicted) >= 3
+    result = torch.sum(predicted) >= 1
     return result
+
+
+def check_similarity_3(best_model_path, masked_images, templates, aggreation_num_templates, device):
+    '''
+    Use Model to check if the 2 images are similar  but for multiple templates at the same time - then check if one of the prediction = 1 then it means that 
+    1 yes, 0 no
+    '''
+    transform = T.Compose(
+        [
+            # transforms.Lambda(lambda x: x / 255.0),  # Ensures the scaling by 255.0
+            # T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+    model = ContrastiveModel(device)
+    model.load_state_dict(torch.load(best_model_path))
+    model = model.to(device)
+
+    transformed_temps = []
+    for i, temp in enumerate(templates):
+        img2 = transform(resize_and_pad_image(np.transpose(temp, (2,0,1)))).float().to(device)
+        transformed_temps.append(img2)
+
+    selected_temps = torch.stack(random.choices(transformed_temps, k=len(masked_images)*aggreation_num_templates)) # Generate a list of 167 images randomly chosen from the 162 images
+    # Stack the selected images to create a tensor of shape (5, 2, 224, 224)
+    # stacked_temps = torch.stack(selected_temps)
+    # transformed_temps = torch.stack(transformed_temps)
+
+    # Convert from 1,3,224,224 to 162,3,224,224 - but 162 is too much -try with 5 templates only
+    crops = [np.transpose(np.array(img)[:,:,:3]/255.0, (2,0,1)) for img in masked_images]
+    transformed_crops = torch.stack([transform(resize_and_pad_image(crop, target_max=224)).float().to(device)
+                                        for crop in crops]) # Must be normalized with size of 3, 224,224 and in torch
+    # stacked_img1 = img1.repeat(num_templates,1,1,1)
+
+    model.eval()
+    with torch.no_grad():
+        outputs_test = []
+        for i in range(aggreation_num_templates):
+            t = selected_temps[len(masked_images)*i : len(masked_images)*(i+1)]
+            outputs_test.append(model(transformed_crops, t).cpu())
+        outputs_test = torch.stack(outputs_test)
+
+        # Average 5 times
+        average_outputs_test = torch.sum(outputs_test, dim=0)/outputs_test.shape[0]
+        average_predicted = (average_outputs_test >= 0.5).int() 
+        # Max out of 5
+        max_outputs_test, _ = torch.max(outputs_test, dim=0)
+        max_predicted = (max_outputs_test >= 0.5).int() 
+        # Min out of 5
+        min_outputs_test, _ = torch.min(outputs_test, dim=0)
+        min_predicted = (min_outputs_test >= 0.5).int() 
+
+        # print(f"Prediction of index{i} is: {outputs_test} as {predicted}")
+
+    average_indices = (average_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
+    max_indices = (max_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
+    min_indices = (min_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
+
+    average_prob = average_outputs_test[average_indices]
+    max_prob = max_outputs_test[max_indices]
+    min_prob = max_outputs_test[min_indices]
+    return average_indices, max_indices, min_indices, average_prob,max_prob, min_prob 
 
 
 def modified_cnos_crop_feature_extraction(crop_rgb, dino_model, device):
