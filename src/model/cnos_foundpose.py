@@ -1,5 +1,6 @@
 from PIL import Image
 import torch
+from tqdm import trange
 import numpy as np
 from src.model.utils import Detections
 import glob
@@ -131,7 +132,7 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
     cnos_avg_scores = list()
     cnos_top_5_scores = list()
     # normal crop
-    for i in range(len(masked_images)):
+    for i in trange(len(masked_images)):
         crop_rgb = np.array(masked_images[i]) # (124, 157, 3)
         normal_features = cnos_crop_feature_extraction(crop_rgb, dinov2_vitl14, device)
 
@@ -155,7 +156,7 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
     
     foundpose_average_scores = list()
     foundpose_top_5_scores = list()
-    for i in range(len(masked_images)):
+    for i in trange(len(masked_images)):
     # for i in range(0,2):
         crop_rgb = np.array( masked_images[i]) # (124, 157, 3)
         rounded_avg_score, rounded_scores = _bow_retrieval(crop_rgb, syn_templates, syn_valid_patch_features, syn_num_valid_patches, dino_model=dinov2_vitl14, device=device)
