@@ -190,8 +190,8 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
     # plt.show()
 
     # Print the results
-    print("Top 5 scores:", rounded_scores)
-    print("Average score:", rounded_avg_score)
+    # print("Top 5 scores:", rounded_scores)
+    # print("Average score:", rounded_avg_score)
 
     return rounded_avg_score, rounded_scores
 
@@ -422,16 +422,16 @@ def cnos_templates_feature_extraction(templates, dino_model, num_templates, devi
 
     normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
-    print("normalized_templates shape", normalized_templates[0].shape)
+    # print("normalized_templates shape", normalized_templates[0].shape)
 
     scaled_padded_templates = [resize_and_pad_image(normalized_template, target_max=224)
                             for normalized_template in normalized_templates] # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
-    print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
+    # print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
 
     
-    plt.imshow(templates[0]) #, cmap=plt.cm.gray)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(templates[0]) #, cmap=plt.cm.gray)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     batch_size = 16
     layers_list = list(range(24))
@@ -470,16 +470,16 @@ def modified_cnos_templates_feature_extraction(templates, dino_model, num_templa
 
     normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
-    print("normalized_templates shape", normalized_templates[0].shape)
+    # print("normalized_templates shape", normalized_templates[0].shape)
 
     scaled_padded_templates = [resize_and_pad_image(normalized_template, target_max=420)
                             for normalized_template in normalized_templates] # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
-    print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
+    #print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
 
     
-    plt.imshow(templates[0]) #, cmap=plt.cm.gray)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(templates[0]) #, cmap=plt.cm.gray)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     batch_size = 16
     layers_list = list(range(24))

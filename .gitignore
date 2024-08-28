@@ -188,3 +188,4 @@ contrastive_learning/outputs/
 wandb/
 contrastive_learning/best_model_checkpoint_train_pbr.pth
 cnos_foundpose_analysis/score_dicts/
+cnos_foundpose_analysis/

@@ -149,11 +149,11 @@ def templates_feature_extraction(templates, dino_model, num_templates, device):
 
     normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
-    print("normalized_templates shape", normalized_templates[0].shape)
+    # print("normalized_templates shape", normalized_templates[0].shape)
 
     scaled_padded_templates = [resize_and_pad_image(normalized_template)
                             for normalized_template in normalized_templates] # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
-    print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
+    # print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
 
     # Mask out the templates by clampping at 0,1 for resize image with size of (3, 30, 30)
     resized_templates = [resize_and_pad_image(torch.tensor(template).permute(2,0,1), target_max=30)
@@ -162,13 +162,13 @@ def templates_feature_extraction(templates, dino_model, num_templates, device):
     masks = [create_mask(resized_template) for resized_template in resized_templates]
     masks = torch.tensor(masks).reshape(num_templates, -1)
     
-    plt.imshow(resized_templates[0].permute(1,2,0), cmap=plt.cm.gray)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(resized_templates[0].permute(1,2,0), cmap=plt.cm.gray)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
-    plt.imshow(np.clip(np.sum(np.array(resized_templates[0]), axis=0), 0, 1), cmap=plt.cm.gray)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(np.clip(np.sum(np.array(resized_templates[0]), axis=0), 0, 1), cmap=plt.cm.gray)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     batch_size = 16
     layers_list = list(range(24))
@@ -193,7 +193,7 @@ def templates_feature_extraction(templates, dino_model, num_templates, device):
     # PCA
     pca = PCA(n_components=256)
     pca_patches_descriptors = pca.fit_transform(np.array(valid_patch_features))
-    print("pca_crop_patches_descriptors.shape", pca_patches_descriptors.shape)
+    # print("pca_crop_patches_descriptors.shape", pca_patches_descriptors.shape)
 
     return pca_patches_descriptors, num_valid_patches, patch_features
 
@@ -212,18 +212,18 @@ def templates_feature_extraction_2(templates, template_masks, dino_model, num_te
 
     normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
-    print("normalized_templates shape", normalized_templates[0].shape)
+    # print("normalized_templates shape", normalized_templates[0].shape)
 
     scaled_padded_templates = [resize_and_pad_image(normalized_template)
                             for normalized_template in normalized_templates] # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
-    print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
+    # print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
 
     # Mask out the templates by clampping at 0,1 for resize image with size of (3, 30, 30)
     masks = [resize_and_pad_image(torch.tensor(mask).unsqueeze(0), target_max=30).flatten() for mask in template_masks]    
     
-    plt.imshow(templates[0])
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(templates[0])
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     # plt.imshow(masks[0], cmap=plt.cm.gray)
     # plt.axis('off')  # Optional: Turn off the axis
@@ -271,18 +271,18 @@ def templates_feature_extraction_3(templates, template_masks, dino_model, num_te
 
     normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
-    print("normalized_templates shape", normalized_templates[0].shape)
+    # print("normalized_templates shape", normalized_templates[0].shape)
 
     scaled_padded_templates = [resize_and_pad_image(normalized_template)
                             for normalized_template in normalized_templates] # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
-    print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
+    # print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
 
     # Mask out the templates by clampping at 0,1 for resize image with size of (3, 30, 30)
     masks = [resize_and_pad_image(torch.tensor(mask).unsqueeze(0), target_max=30).flatten() for mask in template_masks]    
     
-    plt.imshow(templates[0])
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(templates[0])
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     # plt.imshow(masks[0], cmap=plt.cm.gray)
     # plt.axis('off')  # Optional: Turn off the axis
@@ -393,14 +393,14 @@ def crop_feature_extraction_3(crop_rgb, dino_model, device):
     # mask = np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1, dtype="uint8").reshape(-1)
     mask = create_mask(resized_crop).reshape(-1)
 
-    plt.imshow(resized_crop.permute(1,2,0))
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(resized_crop.permute(1,2,0))
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
-    # Display the image - 10* see lb the crop is normalized same way as the templates- ready to compare the similarity now
-    plt.imshow(np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1), cmap=plt.cm.gray)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # # Display the image - 10* see lb the crop is normalized same way as the templates- ready to compare the similarity now
+    # plt.imshow(np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1), cmap=plt.cm.gray)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     # Extract features from 18th layer of Dinov2 
     layers_list = list(range(24))
@@ -723,11 +723,11 @@ def _templates_feature_extraction(templates, dino_model, num_templates, device):
 
     normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
     # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
-    print("normalized_templates shape", normalized_templates[0].shape)
+    # print("normalized_templates shape", normalized_templates[0].shape)
 
     scaled_padded_templates = [_resize_and_pad_image(normalized_template)
                             for normalized_template in normalized_templates] # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
-    print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
+    # print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
 
     batch_size = 16
     layers_list = list(range(24))
