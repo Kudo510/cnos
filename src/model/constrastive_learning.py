@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tqdm import tqdm, trange
 import pickle
-# import wandb
+import wandb
 from torchvision.ops.boxes import batched_nms, box_area
 
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
@@ -635,9 +635,9 @@ class PairedDataset():
         return len(self.dataset)
 
 
-class ContrastiveModel(nn.Module):
+class BCEModel(nn.Module):
     def __init__(self, device):
-        super(ContrastiveModel, self).__init__()  # Initialize the nn.Module superclass
+        super(BCEModel, self).__init__()  # Initialize the nn.Module superclass
         self.layers_list = list(range(24))
         self.device = device
         dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14_reg')
@@ -664,22 +664,44 @@ class ContrastiveModel(nn.Module):
         output = torch.sigmoid(output)
         return output
 
+class ContrastiveLearningModel(nn.Module):
+    def __init__(self, device):
+        super(ContrastiveLearningModel, self).__init__()  # Initialize the nn.Module superclass
+        self.device = device
+        dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14_reg')
+        dinov2_vitl14.patch_size = 14
+        if torch.cuda.is_available():
+            dinov2_vitl14 = torch.nn.DataParallel(dinov2_vitl14).to(self.device)
+        self.dinov2_vitl14 = dinov2_vitl14
+
+        # 2 classes: similar or dissimilar
+        self.fc1 = nn.Linear(2048, 64)
+        self.fc2 = nn.Linear(64, 1)
+
+    def forward_one(self, x):
+        x = self.dinov2_vitl14(x)
+        return x
+    
+    def forward(self, input1, input2):
+        output1 = self.forward_one(input1)
+        output2 = self.forward_one(input2)
+        return output1, output2
 
 # Contrastive loss function
-# class ContrastiveLoss(nn.Module):
-#     def __init__(self, margin=1.0):
-#         super().__init__() 
-#         self.margin = margin
+class ContrastiveLoss(nn.Module):
+    def __init__(self, margin=2.0):
+        super().__init__() 
+        self.margin = margin
 
-#     def forward(self, output1, output2, label):
-#         # Calculate Euclidean distance
-#         euclidean_distance = nn.functional.pairwise_distance(output1, output2)
-#         # Calculate loss
-#         loss_contrastive = torch.mean(
-#             label * torch.pow(euclidean_distance, 2) +
-#             (1 - label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
-#         )
-#         return loss_contrastive
+    def forward(self, output1, output2, label):
+        # Calculate Euclidean distance
+        euclidean_distance = nn.functional.pairwise_distance(output1, output2)
+        # Calculate loss
+        loss_contrastive = torch.mean(
+            label * torch.pow(euclidean_distance, 2) +
+            (1 - label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
+        )
+        return loss_contrastive
 
 class MultiRotate(object):
     def __init__(self, angles):
@@ -782,6 +804,68 @@ def train(device, model, train_dataset, val_dataset, test_dataset, num_epochs):
                     val_loss += loss.detach().cpu().item() / len(val_loader)
                     del img1_val, img2_val, label_val, batch_val
             print(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss:.5f}")
+            # Check if the validation loss is better than the best validation loss so far
+            if val_loss < best_val_loss:
+                # Update the best validation loss and save the model state
+                best_val_loss = val_loss
+                best_model_state = model.state_dict()
+                print("best_val_loss: ", best_val_loss)
+                print("saving best model at epoch: ", epoch)
+                torch.save(best_model_state, 'contrastive_learning/saved_checkpoints/best_model_checkpoint.pth')
+
+        wandb_run.log({
+            'train/epoch': epoch + 1,
+            'train/loss': train_loss,
+            'eval/loss' : val_loss,
+            'best_val_loss': best_val_loss
+        })
+
+
+def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
+
+    wandb_run = wandb.init(project="cnos_contrastive_learning")
+    model = model.to(device)
+    criterion = ContrastiveLoss() # use a Classification Cross-Entropy loss
+    optimizer = optim.Adam(model.parameters(), lr=0.00005)
+    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.2)
+
+    # train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
+    # val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, num_workers=1)
+    # test_loader = DataLoader(test_dataset, batch_size=4, shuffle=True, num_workers=1)
+
+    # return train_dataset, train_negative_pairs, train_postive_pairs
+    # Training loop
+    best_val_loss = float('inf')
+    for epoch in trange(int(num_epochs), desc="Training"):
+        train_loss = 0.0
+        for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} in training", leave=False):
+            img1, img2, labels = batch
+            img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
+            output1, output2 = model(img1, img2)
+            optimizer.zero_grad()
+            loss = criterion(output1, output2, labels)
+            train_loss += loss.detach().cpu().item() / len(train_loader)
+            # print(f"train_loss: {train_loss}")
+            loss.backward()
+            optimizer.step()
+            del img1, img2, labels, batch
+        log.info(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss:.5f}")
+        if epoch %5 == 0:
+            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/model_checkpoint'+str(epoch)+'.pth')
+
+        if epoch %3 == 0:
+            # Validation
+            val_loss = 0.0
+            model.eval()  #
+            with torch.no_grad():
+                for batch_val in tqdm(val_loader, desc=f"Epoch {epoch + 1} in validation", leave=False):
+                    img1_val, img2_val, label_val = batch_val
+                    img1_val, img2_val, label_val = img1_val.to(device), img2_val.to(device), label_val.to(device)
+                    output1_val, output2_val = model(img1_val, img2_val)
+                    loss = criterion(output1_val, output2_val, label_val)
+                    val_loss += loss.detach().cpu().item() / len(val_loader)
+                    del img1_val, img2_val, label_val, batch_val
+            log.info(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss:.5f}")
             # Check if the validation loss is better than the best validation loss so far
             if val_loss < best_val_loss:
                 # Update the best validation loss and save the model state

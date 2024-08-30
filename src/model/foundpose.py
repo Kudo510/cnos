@@ -662,8 +662,15 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
     # plt.show()
 
     # Round up to two decimal places
-    rounded_scores = [math.ceil(score * 1000) / 1000 for score in similar_scores[0]]
-    rounded_avg_score = math.ceil(score_per_detection.item() * 1000) / 1000
+    
+    rounded_scores = [
+        math.ceil(score * 1000) / 1000 if not math.isnan(score) else 0
+        for score in similar_scores[0]
+    ]
+    if not math.isnan(score_per_detection):
+        rounded_avg_score = math.ceil(score_per_detection.item() * 1000) / 1000
+    else:
+        rounded_avg_score = 0 # Set = 0 to make it small to be ignored
 
     # width = 50
     # height = 50

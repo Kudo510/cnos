@@ -9,6 +9,8 @@
 
     constrastive_learning_3.ipynb
 
+    cnos_foundpose for all 
+
     approach_first_check.ipynb: 
         Check the first approach by extracting features from dinov2_l14 at the last layer then retrieve the templates with highest score - see if the templates has similar poses to the input  
     approach_second_check.ipynb: 
@@ -16,6 +18,9 @@
 
     foundpose_BoW_check.ipynb - check BoW code
     foundpose_final.ipynb - is the final checking code
+
+    contrastive_learning_4: is using the model simaese with contrastive loss - not BCE loss
+
 
 # Content
     Input for cnos should be in dataloader with batch size as
