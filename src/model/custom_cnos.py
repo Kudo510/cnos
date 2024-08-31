@@ -4,12 +4,12 @@ import logging
 import math
 import multiprocessing
 import os
+import random
 import shutil
 import sys
 import time
 from functools import partial
 from types import SimpleNamespace
-import random
 
 import cv2
 import distinctipy
@@ -17,6 +17,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn as nn
 import torchvision.transforms as T
 import torchvision.utils
 from hydra import compose, initialize
@@ -31,25 +32,21 @@ from sklearn.decomposition import PCA
 from tqdm import tqdm
 from torchvision.io import read_image
 from torchvision.ops import masks_to_boxes
+from torchvision.ops.boxes import batched_nms, box_area
 
+from segment_anything.modeling.sam import Sam
 from segment_anything.utils.amg import rle_to_mask
-# from src.model.foundpose import resize_and_pad_image
-from src.model.loss import PairwiseSimilarity, Similarity
-from src.model.utils import BatchedData, Detections, convert_npz_to_json
-from src.utils.bbox_utils import CropResizePad
-from src.utils.inout import save_json_bop23, load_json
-
-from tqdm import tqdm
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image
-import torchvision.transforms as transforms
-import torch.nn as nn
 
 from src.model.constrastive_learning import ContrastiveLearningModel, resize_and_pad_image
+from src.model.loss import PairwiseSimilarity, Similarity
+from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
+from src.model.utils import BatchedData, Detections, convert_npz_to_json
+from src.utils.bbox_utils import CropResizePad
+from src.utils.inout import load_json, save_json_bop23
 
 # set level logging
 logging.basicConfig(level=logging.INFO)
+
 
 def visualize(rgb, detections, save_path="./tmp/tmp.png"):
     img = rgb.copy()
@@ -85,7 +82,8 @@ def visualize(rgb, detections, save_path="./tmp/tmp.png"):
     concat.paste(rgb, (0, 0))
     concat.paste(prediction, (img.shape[1], 0))
     return concat
-        
+
+
 def modified_run_inference(template_dir, rgb_path, detections, ref_feats, decriptors, num_max_dets = 20, conf_threshold = 0.5, stability_score_thresh = 0.97):
     '''
     descriptor are the descriptors of all SAM proposals for query image
@@ -354,7 +352,7 @@ def check_similarity_3(best_model_path, masked_images, templates, aggreation_num
     average_prob = average_outputs_test[average_indices]
     max_prob = max_outputs_test[max_indices]
     min_prob = max_outputs_test[min_indices]
-    return average_indices, max_indices, min_indices, average_prob,max_prob, min_prob 
+    return average_indices, max_indices, min_indices, average_prob, max_prob, min_prob 
 
 
 def modified_cnos_crop_feature_extraction(crop_rgb, dino_model, device):
@@ -828,3 +826,98 @@ def custom_visualize_2(dataset_name, rgb_path, dets) -> None:
         #     logging.info(f"Saving {save_path}")
         # counter+=1
     return concat
+
+
+def _remove_very_small_detections(masks, boxes): # after this step only valid boxes, masks are saved, other are filtered out
+        min_box_size = 0.05 # relative to image size 
+        min_mask_size = 300/(640*480) # relative to image size assume the pixesl should be in range (300, 10000) need to remove them 
+        max_mask_size = 10000/(640*480) 
+        img_area = masks.shape[1] * masks.shape[2]
+        box_areas = box_area(boxes) / img_area
+        formatted_values = [f'{value.item():.6f}' for value in box_areas*img_area]
+        mask_areas = masks.sum(dim=(1, 2)) / img_area
+        keep_idxs = torch.logical_and(
+            torch.logical_and(mask_areas > min_mask_size, mask_areas < max_mask_size),
+            box_areas > min_box_size**2
+        )
+        return keep_idxs
+
+
+def _move_to_device(segmentor_model, device="cuda"):
+    # if there is predictor in the model, move it to device
+    if hasattr(segmentor_model, "predictor"):
+        segmentor_model.predictor.model = (
+            segmentor_model.predictor.model.to(device)
+        )
+    else:
+        segmentor_model.model.setup_model(device=device, verbose=True)
+
+
+def _extract_object_by_mask(image, mask, width: int = 512):
+    mask = Image.fromarray(mask)
+    masked_image = Image.composite(
+        image, Image.new("RGB", image.size, (0, 0, 0)), mask)
+    cropped_image = masked_image.crop(masked_image.getbbox())
+    # new_height = width * cropped_image.height // cropped_image.width
+    return cropped_image
+
+
+def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, type = "contrastive"):
+    # Cnos final results
+    file_path = f"contrastive_learning/output_npz/{scene_id:06d}_{frame_id:06d}_{type}"
+    custom_detections_2(sam_detections, selected_proposals_indices, file_path=file_path, scene_id=scene_id, frame_id=frame_id)
+    results = np.load(file_path+".npz")
+    dets = []
+    for i in range(results["segmentation"].shape[0]):
+        det = {
+        "scene_id": results["scene_id"],
+        "image_id": results["image_id"],
+        "category_id": results["category_id"][i],
+        "bbox": results["bbox"][i],
+        "segmentation": results["segmentation"][i],
+        }
+        dets.append(det)
+    if len(dets) > 0:
+        final_result = custom_visualize_2(dataset, rgb_path, dets)
+        # Save image
+        saved_path = f"contrastive_learning/output_images/{scene_id:06d}_{frame_id:06d}_{type}.png"
+        final_result.save(saved_path)
+    return 0
+
+
+def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_path, obj_id=1, dataset = "icbin", aggreation_num_templates=5): 
+
+    rgb = Image.open(rgb_path).convert("RGB")
+    sam_detections = custom_sam_model.generate_masks(np.array(rgb))
+    
+    keep_ids = _remove_very_small_detections(sam_detections["masks"], sam_detections["boxes"])
+
+    selected_masks = [sam_detections["masks"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+    selected_bboxes = [sam_detections["boxes"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+
+    selected_sam_detections = {
+            "masks" : torch.stack(selected_masks),
+            "boxes" : torch.stack(selected_bboxes)
+    }
+
+    masked_images = []
+    for mask in selected_sam_detections["masks"].cpu():
+        binary_mask = np.array(mask) * 255
+        binary_mask = binary_mask.astype(np.uint8)
+        masked_image = _extract_object_by_mask(rgb, binary_mask)
+        masked_images.append(masked_image)
+
+    syn_data_type = "train_pbr" # test
+    out_folder = f"foundpose_analysis/{dataset}/templates"
+    # Load original templates when before putting through dinov2 we also apply transformation.
+    syn_template_path_1 = f"{out_folder}/{syn_data_type}_images_templates/obj_{obj_id:06d}_original" 
+    syn_template_files_1 = sorted(glob.glob(os.path.join(syn_template_path_1, "*.png")), key=os.path.getmtime)
+    syn_template_files = syn_template_files_1 # + syn_template_files_2
+    syn_num_templates = len(syn_template_files)
+    syn_templates = [np.array(Image.open(template_file).convert("RGB"))[:,:,:3]/255.0 for template_file in syn_template_files] 
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    average_indices, max_indices, min_indices, average_prob, max_prob, min_prob = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
+
+    _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
+    return 0
