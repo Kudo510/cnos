@@ -337,13 +337,13 @@ def check_similarity_3(best_model_path, masked_images, templates, aggreation_num
 
         # Average 5 times
         average_outputs_test = torch.sum(outputs_test, dim=0)/outputs_test.shape[0]
-        average_predicted = (average_outputs_test < 0.5).int() 
+        average_predicted = (average_outputs_test < 1).int() 
         # Max out of 5
         max_outputs_test, _ = torch.max(outputs_test, dim=0)
-        max_predicted = (max_outputs_test < 0.5).int() 
+        max_predicted = (max_outputs_test < 1).int() 
         # Min out of 5
         min_outputs_test, _ = torch.min(outputs_test, dim=0)
-        min_predicted = (min_outputs_test < 0.5).int() 
+        min_predicted = (min_outputs_test < 1).int() 
 
         # print(f"Prediction of index{i} is: {outputs_test} as {predicted}")
 
