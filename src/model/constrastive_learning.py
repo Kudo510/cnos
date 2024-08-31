@@ -99,6 +99,8 @@ def geodesic_numpy(R1, R2):
 #     return pos_pairs
 
 def extract_positive_pairs(all_pos_proposals, templates):
+    transform = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+
     pos_pairs = list()
     for proposals_id in trange(len(all_pos_proposals)):
         obj_query_pose = all_pos_proposals[proposals_id]["pose"][None]
@@ -127,8 +129,8 @@ def extract_positive_pairs(all_pos_proposals, templates):
         if d ==0 or x == 0 or y ==0:
             continue
         pos_pair = {
-            "img1" : resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224), # resize and pad images
-            "img2" : resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224), 
+            "img1" : transform(resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224)), # resize and pad images
+            "img2" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224)), 
             "label" : 1
         }
         log.info(f"pos_pair['img1'].shape[-1], pos_pair['img2'].shape[-1]: {pos_pair['img1'].shape[-1]}, {pos_pair['img2'].shape[-1]}" )
@@ -205,6 +207,7 @@ def extract_negative_pairs_3(all_neg_proposals, templates):
     '''
     
     copied_templates = templates["rgb"].copy()
+    transform = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 
     neg_pairs = list()
     for neg_prop in tqdm(all_neg_proposals):
@@ -218,8 +221,8 @@ def extract_negative_pairs_3(all_neg_proposals, templates):
             continue
 
         neg_pair = {
-            "img1" : resize_and_pad_image(np.transpose(neg_prop, (2,0,1)), target_max=224), 
-            "img2" : resize_and_pad_image(np.transpose(selected_temp, (2,0,1)), target_max=224),
+            "img1" : transform(resize_and_pad_image(np.transpose(neg_prop, (2,0,1)), target_max=224)), 
+            "img2" : transform(resize_and_pad_image(np.transpose(selected_temp, (2,0,1)), target_max=224)),
             "label" : 0
         }
 
@@ -625,11 +628,14 @@ class PairedDataset():
         self.transform = transform
 
     def __getitem__(self, index):
-        img1 = self.transform(self.dataset[index]["img1"])
-        img2 = self.transform(self.dataset[index]["img2"])
+        if self.transform:
+            img1 = self.transform(self.dataset[index]["img1"])
+            img2 = self.transform(self.dataset[index]["img2"])
+        else:
+            img1 = self.dataset[index]["img1"]
+            img2 = self.dataset[index]["img2"]
         label = self.dataset[index]["label"]
         return img1.float(), img2.float(), label
-        # return img1.float(), label
 
     def __len__(self):
         return len(self.dataset)
@@ -719,10 +725,10 @@ def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_
     rotation_angles = [30, 60, 90, 120, 150]
     transform = transforms.Compose(
         [
-            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            # transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             # transforms.GaussianBlur(kernel_size=(5, 5), sigma=sigma_range), 
-            transforms.ColorJitter(brightness=(1.1, 1.2)),
-            transforms.ColorJitter(brightness=(0.7, 0.9)),
+            # transforms.ColorJitter(brightness=(1.1, 1.2)),
+            # transforms.ColorJitter(brightness=(0.7, 0.9)),
             # transforms.RandomAutocontrast(p=1)
             transforms.RandomHorizontalFlip(),  # Random horizontal flip
             transforms.RandomVerticalFlip(),  # Random horizontal flip
@@ -782,7 +788,7 @@ def train(device, model, train_dataset, val_dataset, test_dataset, num_epochs):
             outputs = model(img1, img2)
             optimizer.zero_grad()
             loss = criterion(outputs.squeeze(dim=1), labels.float())
-            train_loss += loss.detach().cpu().item() / len(train_loader)
+            train_loss += loss.detach().cpu().item()
             # print(f"train_loss: {train_loss}")
             loss.backward()
             optimizer.step()
@@ -801,7 +807,7 @@ def train(device, model, train_dataset, val_dataset, test_dataset, num_epochs):
                     img1_val, img2_val, label_val = img1_val.to(device), img2_val.to(device), label_val.to(device)
                     outputs_val = model(img1_val, img2_val)
                     loss = criterion(outputs_val.squeeze(dim=1), label_val.float())
-                    val_loss += loss.detach().cpu().item() / len(val_loader)
+                    val_loss += loss.detach().cpu().item()
                     del img1_val, img2_val, label_val, batch_val
             print(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss:.5f}")
             # Check if the validation loss is better than the best validation loss so far
@@ -849,7 +855,7 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
             loss.backward()
             optimizer.step()
             del img1, img2, labels, batch
-        log.info(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss:.5f}")
+        log.info(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss/len(train_loader):.5f}")
         if epoch %5 == 0:
             torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/model_checkpoint'+str(epoch)+'.pth')
 
@@ -865,7 +871,7 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
                     loss = criterion(output1_val, output2_val, label_val)
                     val_loss += loss.detach().cpu().item() / len(val_loader)
                     del img1_val, img2_val, label_val, batch_val
-            log.info(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss:.5f}")
+            log.info(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss/len(val_loader):.5f}")
             # Check if the validation loss is better than the best validation loss so far
             if val_loss < best_val_loss:
                 # Update the best validation loss and save the model state

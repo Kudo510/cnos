@@ -46,7 +46,7 @@ from PIL import Image
 import torchvision.transforms as transforms
 import torch.nn as nn
 
-from src.model.constrastive_learning import ContrastiveModel, resize_and_pad_image
+from src.model.constrastive_learning import ContrastiveLearningModel, resize_and_pad_image
 
 # set level logging
 logging.basicConfig(level=logging.INFO)
@@ -210,7 +210,7 @@ def check_similarity(best_model_path, crop_rgb, templates, device):
         ]
     )
 
-    model = ContrastiveModel(device)
+    model = ContrastiveLearningModel(device)
     model.load_state_dict(torch.load(best_model_path))
     model = model.to(device)
     img1 = transform(resize_and_pad_image(crop_rgb, target_max=224)).unsqueeze(0).float().to(device) # Must be normalized with size of 3, 224,224 and in torch
@@ -253,7 +253,7 @@ def check_similarity_2(best_model_path, crop_rgb, templates, device):
         ]
     )
 
-    model = ContrastiveModel(device)
+    model = ContrastiveLearningModel(device)
     model.load_state_dict(torch.load(best_model_path))
     model = model.to(device)
 
@@ -262,7 +262,7 @@ def check_similarity_2(best_model_path, crop_rgb, templates, device):
         img2 = transform(resize_and_pad_image(np.transpose(temp, (2,0,1)))).float().to(device)
         transformed_temps.append(img2)
     # Randomly select 5 unique images
-    num_templates = 1
+    num_templates = 10
     selected_temps = random.sample(transformed_temps, num_templates)
     # Stack the selected images to create a tensor of shape (5, 2, 224, 224)
     stacked_temps = torch.stack(selected_temps)
@@ -276,14 +276,19 @@ def check_similarity_2(best_model_path, crop_rgb, templates, device):
         correct, total = 0, 0
         test_loss = 0.0
         
-        outputs_test = model(stacked_img1, stacked_temps)
+        output1, output2 = model(stacked_img1, stacked_temps)
         # _, predicted = torch.max(outputs_test.cpu(), 1)   
-        predicted = (outputs_test.cpu() >= 0.5).int() 
+        euclidean_distance = nn.functional.pairwise_distance(output1, output2).cpu()
 
-        print(f"Prediction of index{i} is: {outputs_test} as {predicted}")
+        average_score = torch.sum(euclidean_distance, dim=0)/euclidean_distance.shape[0]
+        if average_score < 1:
+            class_name = 1
+        else:
+            class_name = 0
+        print(f"Prediction of index{i} is: {euclidean_distance}, {average_score} as {class_name}")
 
-    result = torch.sum(predicted) >= 1
-    return result
+    # result = torch.sum(predicted) >= 1
+    return class_name
 
 
 def check_similarity_3(best_model_path, masked_images, templates, aggreation_num_templates, device):
@@ -299,7 +304,7 @@ def check_similarity_3(best_model_path, masked_images, templates, aggreation_num
         ]
     )
 
-    model = ContrastiveModel(device)
+    model = ContrastiveLearningModel(device)
     model.load_state_dict(torch.load(best_model_path))
     model = model.to(device)
 
@@ -324,18 +329,21 @@ def check_similarity_3(best_model_path, masked_images, templates, aggreation_num
         outputs_test = []
         for i in range(aggreation_num_templates):
             t = selected_temps[len(masked_images)*i : len(masked_images)*(i+1)]
-            outputs_test.append(model(transformed_crops, t).cpu())
+            outputs1, outputs2 = model(transformed_crops, t)
+            euclidean_distance = nn.functional.pairwise_distance(outputs1, outputs2)
+            outputs_test.append(euclidean_distance)
+
         outputs_test = torch.stack(outputs_test)
 
         # Average 5 times
         average_outputs_test = torch.sum(outputs_test, dim=0)/outputs_test.shape[0]
-        average_predicted = (average_outputs_test >= 0.5).int() 
+        average_predicted = (average_outputs_test < 0.5).int() 
         # Max out of 5
         max_outputs_test, _ = torch.max(outputs_test, dim=0)
-        max_predicted = (max_outputs_test >= 0.5).int() 
+        max_predicted = (max_outputs_test < 0.5).int() 
         # Min out of 5
         min_outputs_test, _ = torch.min(outputs_test, dim=0)
-        min_predicted = (min_outputs_test >= 0.5).int() 
+        min_predicted = (min_outputs_test < 0.5).int() 
 
         # print(f"Prediction of index{i} is: {outputs_test} as {predicted}")
 
