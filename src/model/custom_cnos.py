@@ -294,6 +294,9 @@ def check_similarity_3(best_model_path, masked_images, templates, aggreation_num
     Use Model to check if the 2 images are similar  but for multiple templates at the same time - then check if one of the prediction = 1 then it means that 
     1 yes, 0 no
     '''
+    # Set radom seed
+    random.seed(10)
+    
     transform = T.Compose(
         [
             # transforms.Lambda(lambda x: x / 255.0),  # Ensures the scaling by 255.0
@@ -874,7 +877,7 @@ def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_dete
         "image_id": results["image_id"],
         "category_id": results["category_id"][i],
         "bbox": results["bbox"][i],
-        "segmentation": results["segmentation"][i],
+        "segmentation": results["segmentation"][i].astype(bool),
         }
         dets.append(det)
     if len(dets) > 0:
@@ -885,15 +888,28 @@ def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_dete
     return 0
 
 
+def _tighten_bboxes(sam_detections, device="cuda"):
+    # Apply morphological opening - it does eorion then dilation to remove noise
+    kernel = np.ones((5,5), np.uint8)
+
+    filtered_masks = list()
+    for mask in sam_detections["masks"].cpu():
+        filtered_mask = cv2.morphologyEx(np.array(mask, dtype="uint8"), cv2.MORPH_OPEN, kernel)
+        filtered_masks.append(torch.tensor(filtered_mask))
+    sam_detections["masks"] = torch.stack(filtered_masks).to(device)
+    return sam_detections
+
 def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_path, obj_id=1, dataset = "icbin", aggreation_num_templates=5): 
 
     rgb = Image.open(rgb_path).convert("RGB")
     sam_detections = custom_sam_model.generate_masks(np.array(rgb))
     
-    keep_ids = _remove_very_small_detections(sam_detections["masks"], sam_detections["boxes"])
+    noise_remove_sam_detections = _tighten_bboxes(sam_detections)
 
-    selected_masks = [sam_detections["masks"][i] for i in range(len(keep_ids)) if keep_ids[i]]
-    selected_bboxes = [sam_detections["boxes"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+    keep_ids = _remove_very_small_detections(noise_remove_sam_detections["masks"], noise_remove_sam_detections["boxes"])
+
+    selected_masks = [noise_remove_sam_detections["masks"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+    selected_bboxes = [noise_remove_sam_detections["boxes"][i] for i in range(len(keep_ids)) if keep_ids[i]]
 
     selected_sam_detections = {
             "masks" : torch.stack(selected_masks),
@@ -920,4 +936,47 @@ def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_pat
     average_indices, max_indices, min_indices, average_prob, max_prob, min_prob = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
 
     _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
+    return 0
+
+
+def full_pipeline_non_filtered(custom_sam_model, rgb_path, scene_id, frame_id, best_model_path, obj_id=1, dataset = "icbin", aggreation_num_templates=5): 
+
+    '''
+    Do not remove any small detection or tighten the bbox
+    '''
+    rgb = Image.open(rgb_path).convert("RGB")
+    sam_detections = custom_sam_model.generate_masks(np.array(rgb))
+    
+    # noise_remove_sam_detections = _tighten_bboxes(sam_detections)
+
+    # keep_ids = _remove_very_small_detections(noise_remove_sam_detections["masks"], noise_remove_sam_detections["boxes"])
+
+    # selected_masks = [noise_remove_sam_detections["masks"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+    # selected_bboxes = [noise_remove_sam_detections["boxes"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+
+    # selected_sam_detections = {
+    #         "masks" : torch.stack(selected_masks),
+    #         "boxes" : torch.stack(selected_bboxes)
+    # }
+
+    masked_images = []
+    for mask in sam_detections["masks"].cpu():
+        binary_mask = np.array(mask) * 255
+        binary_mask = binary_mask.astype(np.uint8)
+        masked_image = _extract_object_by_mask(rgb, binary_mask)
+        masked_images.append(masked_image)
+
+    syn_data_type = "train_pbr" # test
+    out_folder = f"foundpose_analysis/{dataset}/templates"
+    # Load original templates when before putting through dinov2 we also apply transformation.
+    syn_template_path_1 = f"{out_folder}/{syn_data_type}_images_templates/obj_{obj_id:06d}_original" 
+    syn_template_files_1 = sorted(glob.glob(os.path.join(syn_template_path_1, "*.png")), key=os.path.getmtime)
+    syn_template_files = syn_template_files_1 # + syn_template_files_2
+    syn_num_templates = len(syn_template_files)
+    syn_templates = [np.array(Image.open(template_file).convert("RGB"))[:,:,:3]/255.0 for template_file in syn_template_files] 
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    average_indices, max_indices, min_indices, average_prob, max_prob, min_prob = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
+
+    _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
     return 0
