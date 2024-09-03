@@ -193,3 +193,5 @@ foundpose_analysis/ycbv/
 foundpose_analysis/ycbv/templates/train_pbr_processed_metaData.csv
 contrastive_learning/output_images/
 contrastive_learning/output_npz/
+cnos_foundpose_analysis/
+contrastive_learning/

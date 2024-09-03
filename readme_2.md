@@ -21,6 +21,7 @@
 
     contrastive_learning_4: is using the model simaese with contrastive loss - not BCE loss
 
+    10* self rotate (not with hardmining) provides the best results
 
 # Content
     Input for cnos should be in dataloader with batch size as

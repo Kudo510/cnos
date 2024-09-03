@@ -98,8 +98,29 @@ def geodesic_numpy(R1, R2):
 
 #     return pos_pairs
 
+def _augment_pos_pairs(pos_pairs):
+    augmented_pos_pairs = []
+    rotation_angles = [45, 90, 135, 180, 225]
+    
+    for pos_pair in pos_pairs:
+        # Add the original pair
+        augmented_pos_pairs.append(pos_pair)
+        
+        # Add rotated versions
+        for angle in rotation_angles:
+            rotated_pair = {
+                "img1": transforms.functional.rotate(pos_pair["img1"], angle),
+                "img2": pos_pair["img2"],
+                "label": 1
+            }
+            augmented_pos_pairs.append(rotated_pair)
+    
+    return augmented_pos_pairs
+
 def extract_positive_pairs(all_pos_proposals, templates):
     transform = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+
+
 
     pos_pairs = list()
     for proposals_id in trange(len(all_pos_proposals)):
@@ -129,8 +150,8 @@ def extract_positive_pairs(all_pos_proposals, templates):
         if d ==0 or x == 0 or y ==0:
             continue
         pos_pair = {
-            "img1" : transform(resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224)), # resize and pad images
-            "img2" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224)), 
+            "img1" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224)), 
+            "img2" : transform(resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224)), # resize and pad images
             "label" : 1
         }
         log.info(f"pos_pair['img1'].shape[-1], pos_pair['img2'].shape[-1]: {pos_pair['img1'].shape[-1]}, {pos_pair['img2'].shape[-1]}" )
@@ -138,7 +159,8 @@ def extract_positive_pairs(all_pos_proposals, templates):
             continue
         pos_pairs.append(pos_pair)
 
-    return pos_pairs
+    augmented_pos_pairs = _augment_pos_pairs(pos_pairs)
+    return augmented_pos_pairs
 
 
 def extract_negative_pairs(all_neg_proposals, all_pos_proposals, templates):
@@ -826,6 +848,24 @@ class ContrastiveLoss(nn.Module):
         )
         return loss_contrastive
 
+class ContrastiveLossHardCase(nn.Module):
+    def __init__(self, margin=2.0):
+        super().__init__() 
+        self.margin = margin
+
+    def forward(self, output1, output2, label):
+        # Calculate Euclidean distance
+        euclidean_distance = nn.functional.pairwise_distance(output1, output2)
+        # Calculate loss
+        loss_contrastive = label * torch.pow(euclidean_distance, 2) + (1 - label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
+
+        # Choose 8 highest loss
+        k = int(output1.shape[0]/2)
+        _, indices = torch.topk(loss_contrastive, k)
+
+        selected_loss = loss_contrastive[indices]
+        return torch.mean(selected_loss)
+
 class MultiRotate(object):
     def __init__(self, angles):
         self.angles = angles
@@ -867,8 +907,9 @@ def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_
         "poses" : template_poses
     }
 
-    negative_pairs = extract_negative_pairs_3(all_neg_proposals, templates)
+    
     postive_pairs = extract_positive_pairs(all_pos_proposals, templates)    
+    negative_pairs = extract_negative_pairs_3(all_neg_proposals, templates)
 
     train_postive_pairs, remaining_postive_pairs = train_test_split(postive_pairs, test_size=0.2, random_state=0)
     val_postive_pairs, test_postive_pairs = train_test_split(remaining_postive_pairs, test_size=0.5, random_state=0)
@@ -967,7 +1008,7 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
             output1, output2 = model(img1, img2)
             optimizer.zero_grad()
             loss = criterion(output1, output2, labels)
-            train_loss += loss.detach().cpu().item() / len(train_loader)
+            train_loss += loss.detach().cpu().item() 
             # print(f"train_loss: {train_loss}")
             loss.backward()
             optimizer.step()
@@ -986,7 +1027,7 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
                     img1_val, img2_val, label_val = img1_val.to(device), img2_val.to(device), label_val.to(device)
                     output1_val, output2_val = model(img1_val, img2_val)
                     loss = criterion(output1_val, output2_val, label_val)
-                    val_loss += loss.detach().cpu().item() / len(val_loader)
+                    val_loss += loss.detach().cpu().item()
                     del img1_val, img2_val, label_val, batch_val
             log.info(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss/len(val_loader):.5f}")
             # Check if the validation loss is better than the best validation loss so far
@@ -1000,8 +1041,8 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
 
         wandb_run.log({
             'train/epoch': epoch + 1,
-            'train/loss': train_loss,
-            'eval/loss' : val_loss,
+            'train/loss': train_loss/len(train_loader),
+            'eval/loss' : val_loss/len(val_loader),
             'best_val_loss': best_val_loss
         })
 
@@ -1023,3 +1064,66 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
 #             # total += len(x_test)
 #         print(f"Test loss: {test_loss:.2f}")
 #         # print(f"Test accuracy: {correct / total * 100:.2f}%")
+
+
+def train_contrastive_loss_hard_case_mining(device, model, train_loader, val_loader, num_epochs):
+
+    wandb_run = wandb.init(project="cnos_contrastive_learning")
+    model = model.to(device)
+    criterion = ContrastiveLossHardCase() # use a Classification Cross-Entropy loss
+    optimizer = optim.Adam(model.parameters(), lr=0.00005)
+    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.2)
+
+    # train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
+    # val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, num_workers=1)
+    # test_loader = DataLoader(test_dataset, batch_size=4, shuffle=True, num_workers=1)
+
+    # return train_dataset, train_negative_pairs, train_postive_pairs
+    # Training loop
+    best_val_loss = float('inf')
+    for epoch in trange(int(num_epochs), desc="Training"):
+        train_loss = 0.0
+        for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} in training", leave=False):
+            img1, img2, labels = batch
+            img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
+            output1, output2 = model(img1, img2)
+            optimizer.zero_grad()
+            loss = criterion(output1, output2, labels)
+            train_loss += loss.detach().cpu().item()
+            # print(f"train_loss: {train_loss}")
+            loss.backward()
+            optimizer.step()
+            del img1, img2, labels, batch
+        log.info(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss/len(train_loader):.5f}")
+        if epoch %5 == 0:
+            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/model_checkpoint'+str(epoch)+'.pth')
+
+        if epoch %3 == 0:
+            # Validation
+            val_loss = 0.0
+            model.eval()  #
+            with torch.no_grad():
+                for batch_val in tqdm(val_loader, desc=f"Epoch {epoch + 1} in validation", leave=False):
+                    img1_val, img2_val, label_val = batch_val
+                    img1_val, img2_val, label_val = img1_val.to(device), img2_val.to(device), label_val.to(device)
+                    output1_val, output2_val = model(img1_val, img2_val)
+                    loss = criterion(output1_val, output2_val, label_val)
+                    val_loss += loss.detach().cpu().item()
+                    del img1_val, img2_val, label_val, batch_val
+            log.info(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss/len(val_loader):.5f}")
+            # Check if the validation loss is better than the best validation loss so far
+            if val_loss < best_val_loss:
+                # Update the best validation loss and save the model state
+                best_val_loss = val_loss
+                best_model_state = model.state_dict()
+                print("best_val_loss: ", best_val_loss)
+                print("saving best model at epoch: ", epoch)
+                torch.save(best_model_state, 'contrastive_learning/saved_checkpoints/best_model_checkpoint.pth')
+
+        wandb_run.log({
+            'train/epoch': epoch + 1,
+            'train/loss': train_loss/len(train_loader),
+            'eval/loss' : val_loss/len(val_loader),
+            'best_val_loss': best_val_loss
+        })
+

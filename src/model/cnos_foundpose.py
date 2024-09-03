@@ -28,7 +28,7 @@ from src.model.foundpose import (
 
 from src.model.custom_cnos import custom_detections, custom_visualize, custom_detections_2, custom_visualize_2
 
-def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path,     type = "cnos"):
+def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, type = "cnos"):
     # Cnos final results
     file_path = f"cnos_foundpose_analysis/output_npz/{scene_id:06d}_{frame_id:06d}_{type}"
     custom_detections_2(sam_detections, selected_proposals_indices, file_path=file_path, scene_id=scene_id, frame_id=frame_id)
@@ -46,7 +46,7 @@ def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_dete
     if len(dets) > 0:
         final_result = custom_visualize_2(dataset, rgb_path, dets)
         # Save image
-        saved_path = f"cnos_foundpose_analysis/output_images/{scene_id:06d}_{frame_id:06d}_{type}.png"
+        saved_path = f"cnos_foundpose_analysis/output_images_different_thresholds/{scene_id:06d}_{frame_id:06d}_{type}.png"
         final_result.save(saved_path)
     return 0
 
@@ -193,6 +193,74 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
     return 0
     # final_result
 
+
+def cnos_different_thresholds(rgb_path, custom_sam_model, scene_id, frame_id, obj_id=1, dataset="icbin"):
+
+    rgb = Image.open(rgb_path).convert("RGB")
+    sam_detections = custom_sam_model.generate_masks(np.array(rgb))
+
+    masked_images = []
+    for mask in sam_detections["masks"].cpu():
+        binary_mask = np.array(mask) * 255
+        binary_mask = binary_mask.astype(np.uint8)
+        masked_image = _extract_object_by_mask(rgb, binary_mask)
+        masked_images.append(masked_image)
+    
+    # Load dinov2
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
+    if torch.cuda.is_available():
+        dinov2_vitl14 = torch.nn.DataParallel(dinov2_vitl14).to(device)  # Use DataParallel for multiple GPUs
+
+    # Extract features for templates
+    syn_data_type = "train_pbr" # test
+    out_folder = f"foundpose_analysis/{dataset}/templates"
+
+    syn_template_path_1 = f"{out_folder}/{syn_data_type}_images_templates/obj_{obj_id:06d}_original" 
+    syn_template_files_1 = sorted(glob.glob(os.path.join(syn_template_path_1, "*.png")), key=os.path.getmtime)
+    syn_template_files = syn_template_files_1 
+    syn_num_templates = len(syn_template_files)
+    syn_templates = [np.array(Image.open(template_file).convert("RGB"))[:,:,:3] for template_file in syn_template_files] # This image has 4 channels- the last one is not crucial - maybe about opacity
+    syn_ref_features = cnos_templates_feature_extraction(
+        templates = syn_templates, num_templates = syn_num_templates, dino_model = dinov2_vitl14, device = device
+        )
+
+    # Cnos Results
+    cnos_avg_scores = list()
+    cnos_top_5_scores = list()
+    # normal crop
+    for i in trange(len(masked_images)):
+        crop_rgb = np.array(masked_images[i]) # (124, 157, 3)
+        normal_features = cnos_crop_feature_extraction(crop_rgb, dinov2_vitl14, device)
+
+        rounded_avg_score, rounded_scores = cnos_calculate_similarity(crop_rgb, normal_features, syn_ref_features, syn_templates)
+        cnos_avg_scores.append(rounded_avg_score)
+        cnos_top_5_scores.append(rounded_scores)
+
+    
+    cnos_selected_proposals_indices_05 = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.5]
+    cnos_selected_proposals_scores_05 = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.5]
+
+    cnos_selected_proposals_indices_04 = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.4]
+    cnos_selected_proposals_scores_04 = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.4]
+
+    cnos_selected_proposals_indices_03 = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.3]
+    cnos_selected_proposals_scores_03 = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.3]
+
+    cnos_selected_proposals_indices_02 = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.2]
+    cnos_selected_proposals_scores_02 = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.2]
+
+
+    # Cnos
+    # _save_final_results(selected_proposals_indices=cnos_selected_proposals_indices_05, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos_05")
+    # # Foundpose
+    _save_final_results(selected_proposals_indices=cnos_selected_proposals_indices_04, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos_04")
+    # Cnos_foundpose
+    # _save_final_results(selected_proposals_indices=cnos_selected_proposals_indices_03, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos_03")
+    # _save_final_results(selected_proposals_indices=cnos_selected_proposals_indices_02, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos_02")
+
+    return 0
+    # final_result
 
 
 

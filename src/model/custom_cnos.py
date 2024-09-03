@@ -260,7 +260,7 @@ def check_similarity_2(best_model_path, crop_rgb, templates, device):
         img2 = transform(resize_and_pad_image(np.transpose(temp, (2,0,1)))).float().to(device)
         transformed_temps.append(img2)
     # Randomly select 5 unique images
-    num_templates = 10
+    num_templates = 162
     selected_temps = random.sample(transformed_temps, num_templates)
     # Stack the selected images to create a tensor of shape (5, 2, 224, 224)
     stacked_temps = torch.stack(selected_temps)
@@ -283,7 +283,7 @@ def check_similarity_2(best_model_path, crop_rgb, templates, device):
             class_name = 1
         else:
             class_name = 0
-        print(f"Prediction of index{i} is: {euclidean_distance}, {average_score} as {class_name}")
+        print(f"Prediction is: {euclidean_distance}, {average_score} as {class_name}")
 
     # result = torch.sum(predicted) >= 1
     return class_name
@@ -355,7 +355,7 @@ def check_similarity_3(best_model_path, masked_images, templates, aggreation_num
     average_prob = average_outputs_test[average_indices]
     max_prob = max_outputs_test[max_indices]
     min_prob = max_outputs_test[min_indices]
-    return average_indices, max_indices, min_indices, average_prob, max_prob, min_prob 
+    return average_indices, max_indices, min_indices, average_prob, max_prob, min_prob, average_outputs_test, outputs_test
 
 
 def modified_cnos_crop_feature_extraction(crop_rgb, dino_model, device):
@@ -933,7 +933,7 @@ def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_pat
     syn_templates = [np.array(Image.open(template_file).convert("RGB"))[:,:,:3]/255.0 for template_file in syn_template_files] 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    average_indices, max_indices, min_indices, average_prob, max_prob, min_prob = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
+    average_indices, max_indices, min_indices, average_prob, max_prob, min_prob, _, _ = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
 
     _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
     return 0
