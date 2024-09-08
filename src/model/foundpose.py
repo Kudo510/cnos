@@ -656,10 +656,10 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
     for idx in similar_template_indices[0]:
            similar_templates.append(templates[idx])
 
-    # # Display the crop
-    # plt.imshow(crop_rgb)
-    # plt.axis('off')  # Optional: Turn off the axis
-    # plt.show()
+    # Display the crop
+    plt.imshow(crop_rgb)
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
 
     # Round up to two decimal places
     
@@ -672,27 +672,27 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
     else:
         rounded_avg_score = 0 # Set = 0 to make it small to be ignored
 
-    # width = 50
-    # height = 50
-    # fig = plt.figure(figsize=(7, 7))
-    # columns = 3
-    # rows = 2
+    width = 50
+    height = 50
+    fig = plt.figure(figsize=(7, 7))
+    columns = 3
+    rows = 2
 
-    # for index, template in enumerate(similar_templates):
-    #     fig.add_subplot(rows, columns, index + 1)
-    #     img = template # transpose(1, 2, 0)
-    #     plt.imshow(img)
-    #     plt.axis('off')
-    #     plt.title(f'Top Template {similar_template_indices[0][index]}')
+    for index, template in enumerate(similar_templates):
+        fig.add_subplot(rows, columns, index + 1)
+        img = template # transpose(1, 2, 0)
+        plt.imshow(img)
+        plt.axis('off')
+        plt.title(f'Top Template {similar_template_indices[0][index]}')
 
-    # plt.tight_layout()
-    # plt.show()
+    plt.tight_layout()
+    plt.show()
 
     # Print the results
-    # print("Top 5 scores:", rounded_scores)
-    # print("Average score:", rounded_avg_score)
+    print("Top 5 scores:", rounded_scores)
+    print("Average score:", rounded_avg_score)
 
-    return rounded_avg_score, rounded_scores
+    return rounded_avg_score, rounded_scores , similar_templates
 
 
 # Code for first approach check
@@ -867,3 +867,6 @@ def _run_inference(template_dir, rgb_path, num_max_dets, conf_threshold, stabili
     # vis_img = visualize(rgb, detections)
     # vis_img.save(f"{template_dir}/cnos_results/vis.png")
     plt.imshow(vis_img)
+
+
+

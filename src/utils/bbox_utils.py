@@ -101,7 +101,7 @@ class CropResizePad:
         processed_images = []
         for image, box, scale in zip(images, boxes, scale_factor):
             # crop and scale
-            image = image[:, box[1] : box[3], box[0] : box[2]]
+            image = image[:, box[1] : box[3], box[0] : box[2]] # crop 
             image = F.interpolate(image.unsqueeze(0), scale_factor=scale.item())[0]
             # pad and resize
             original_h, original_w = image.shape[1:] 

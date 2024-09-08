@@ -72,8 +72,8 @@ def _bow_retrieval(crop_rgb, templates, valid_patch_features, num_valid_patches,
     concat_templates_vector = torch.cat([torch.tensor(vector).view(1,-1) for vector in templates_vector]) # Goal torch.Size([642, 2048])
 
     # Compare crop to templates
-    rounded_avg_score, rounded_scores = calculate_similarity(crop_rgb, crop_vector, concat_templates_vector, templates, synthetic=True)
-    return rounded_avg_score, rounded_scores
+    rounded_avg_score, rounded_scores, similar_templates = calculate_similarity(crop_rgb, crop_vector, concat_templates_vector, templates, synthetic=True)
+    return rounded_avg_score, rounded_scores, similar_templates
 
 def _move_to_device(segmentor_model, device="cuda"):
     # if there is predictor in the model, move it to device
@@ -261,6 +261,7 @@ def cnos_different_thresholds(rgb_path, custom_sam_model, scene_id, frame_id, ob
 
     return 0
     # final_result
+
 
 
 

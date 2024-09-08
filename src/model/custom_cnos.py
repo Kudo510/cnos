@@ -162,34 +162,34 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
     # Check the confidence scores for the similar templates
     similar_scores = scores[:, similar_template_indices[0].to("cpu")]
 
-    # # Display the crop
-    # plt.imshow(crop_rgb)
-    # plt.axis('off')  # Optional: Turn off the axis
-    # plt.show()
+    # Display the crop
+    plt.imshow(crop_rgb)
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
 
     # Round up to two decimal places
     rounded_scores = [math.ceil(score * 1000) / 1000 for score in similar_scores[0]]
     rounded_avg_score = math.ceil(score_per_detection.item() * 1000) / 1000
 
-    # width = 50
-    # height = 50
-    # fig = plt.figure(figsize=(7, 7))
-    # columns = 3
-    # rows = 2
+    width = 50
+    height = 50
+    fig = plt.figure(figsize=(7, 7))
+    columns = 3
+    rows = 2
 
-    # for i, index in enumerate(similar_template_indices[0]):
-    #     fig.add_subplot(rows, columns, i + 1)
-    #     img = templates[index] # permute(1, 2, 0)
-    #     plt.imshow(img)
-    #     plt.axis('off')
-    #     plt.title(f'Top Template {index}')
+    for i, index in enumerate(similar_template_indices[0]):
+        fig.add_subplot(rows, columns, i + 1)
+        img = templates[index] # permute(1, 2, 0)
+        plt.imshow(img)
+        plt.axis('off')
+        plt.title(f'Top Template {index}')
 
-    # plt.tight_layout()
-    # plt.show()
+    plt.tight_layout()
+    plt.show()
 
     # Print the results
-    # print("Top 5 scores:", rounded_scores)
-    # print("Average score:", rounded_avg_score)
+    print("Top 5 scores:", rounded_scores)
+    print("Average score:", rounded_avg_score)
 
     return rounded_avg_score, rounded_scores
 
