@@ -409,6 +409,10 @@ def cnos_crop_feature_extraction(crop_rgb, dino_model, device):
     scaled_padded_crop_rgb = resize_and_pad_image(normalized_crop_rgb, target_max=224).unsqueeze(0) # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
     # print("scaled_padded_crop_rgb.shape", scaled_padded_crop_rgb.shape)
 
+    # Display the crop
+    plt.imshow(scaled_padded_crop_rgb.squeeze(0).permute(1,2,0))
+    plt.axis('off')  # Optional: Turn off the axis
+    plt.show()
 
     # Extract features from 18th layer of Dinov2 
     layers_list = list(range(24))
