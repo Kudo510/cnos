@@ -12,7 +12,8 @@ import os
 
 from src.model.utils import Detections
 from cnos_clustering_utils import (move_to_device, tighten_bboxes, extract_object_by_mask, _remove_very_small_detections, 
-                                    plot_images, extract_sam_crops_features, hierarchical_clustering)
+                                    plot_images, extract_sam_crops_features, hierarchical_clustering, analyze_tsne_with_svm
+                                    , analyze_tsne_with_kmeans)
 from src.model.custom_cnos import cnos_templates_feature_extraction
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
 from segment_anything.modeling.sam import Sam
@@ -86,11 +87,19 @@ def main(dataset, rgb_path, obj_id, device):
     # Extract feature for all crops
     crop_features = extract_sam_crops_features(masked_images, dinov2_vitl14, device)
 
-    input_features = torch.cat((syn_ref_features, crop_features), dim=0)
+    input_features = torch.cat((syn_ref_features, crop_features), dim=0) # (num_samples, 1024)
     log.info(input_features.shape)
 
-    np.random.seed(42)
-    hierarchical_clustering(input_features, n_clusters=2)
+    from sklearn.manifold import TSNE
+
+    # Create and fit the t-SNE model
+    tsne = TSNE(n_components=2, random_state=42)
+    tsne_results = tsne.fit_transform(np.array(input_features.cpu()))    
+
+    # other_same_class, accuracy = analyze_tsne_with_svm(tsne_results=tsne_results, n_samples_first_class=syn_ref_features.shape[0], total_samples=input_features.shape[0])
+
+    log.info("Done")
+    
 if __name__ == "__main__":
     dataset = "icbin"
     rgb_path = "datasets/bop23_challenge/datasets/icbin/test/000001/rgb/000000.png" # f"datasets/bop23_challenge/datasets/{dataset}/test/000048/rgb/000001.png"

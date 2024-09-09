@@ -14,6 +14,10 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 from scipy.cluster.hierarchy import dendrogram
+from sklearn.cluster import KMeans
+from sklearn import svm
+from sklearn.model_selection import train_test_split
+from mpl_toolkits.mplot3d import Axes3D
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 log = logging.getLogger(__name__)
@@ -177,13 +181,316 @@ def hierarchical_clustering(embeddings, n_clusters=2):
     logging.info(f"Number of samples in each cluster: {np.bincount(cluster_labels)}")
 
 
+def analyze_tsne_with_svm(tsne_results, n_samples_first_class, total_samples):
+    """
+    Analyze t-SNE results using SVM classification.
+    
+    :param tsne_results: numpy array of shape (total_samples, 2) containing t-SNE results
+    :param n_samples_first_class: number of samples that should belong to the first class
+    :param total_samples: total number of samples
+    :return: tuple containing (other_same_class, accuracy)
+    """
+    # Create labels: first n_samples_first_class points are class 0, rest are class 1
+    labels = np.zeros(total_samples, dtype=int)
+    labels[n_samples_first_class:] = 1
+
+    # Split the data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(tsne_results, labels, test_size=0.2, random_state=42)
+
+    # Create and train the SVM model
+    svm_model = svm.SVC(kernel='poly', degree=3, random_state=42)
 
 
+    svm_model.fit(X_train, y_train)
+
+    # Predict on the entire dataset
+    predictions = svm_model.predict(tsne_results)
+
+    # Find indices of points classified in the same class as the first n_samples_first_class
+    same_class_indices = np.where(predictions == 0)[0]
+    other_same_class = [idx - n_samples_first_class for idx in same_class_indices if idx > n_samples_first_class]
+    print("Indices of other points classified in the same class as the first class:")
+    print(other_same_class)
+    # Create a mesh to plot in
+    x_min, x_max = tsne_results[:, 0].min() - 1, tsne_results[:, 0].max() + 1
+    y_min, y_max = tsne_results[:, 1].min() - 1, tsne_results[:, 1].max() + 1
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
+                         np.arange(y_min, y_max, 0.02))
+
+    # Obtain labels for each point in mesh
+    Z = svm_model.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    # Plot the results
+    plt.figure(figsize=(12, 10))
+    plt.contourf(xx, yy, Z, alpha=0.8, cmap=plt.cm.RdYlBu)
+
+    # Plot all points
+    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=predictions, cmap=plt.cm.RdYlBu, edgecolor='black')
+
+    # Highlight the first n_samples_first_class points
+    plt.scatter(tsne_results[:n_samples_first_class, 0], tsne_results[:n_samples_first_class, 1], 
+                c='green', s=100, label=f'First {n_samples_first_class} points', edgecolor='black')
+
+    # Highlight the other points classified in the same class
+    plt.scatter(tsne_results[same_class_indices[same_class_indices >= n_samples_first_class], 0], 
+                tsne_results[same_class_indices[same_class_indices >= n_samples_first_class], 1],
+                c='yellow', s=100, label='Other points in same class', edgecolor='black')
+
+    plt.xlabel('t-SNE feature 1')
+    plt.ylabel('t-SNE feature 2')
+    plt.title('SVM Classification of t-SNE results')
+    plt.colorbar(scatter)
+    plt.legend()
+
+    # Add annotations for class sizes
+    print(f"Points in class 0: {other_same_class}")
+    # print(f"Points in class 1: {total_samples - n_samples_first_class}")
+
+    plt.show()
+
+    # Calculate and return the accuracy
+    accuracy = svm_model.score(X_test, y_test)
+    print(f"Model accuracy: {accuracy:.2f}")
+
+    return same_class_indices, accuracy
 
 
+def analyze_tsne_with_svm_old(tsne_results, n_samples_first_class, total_samples):
+    """
+    Analyze t-SNE results using SVM classification.
+    
+    :param tsne_results: numpy array of shape (total_samples, 2) containing t-SNE results
+    :param n_samples_first_class: number of samples that should belong to the first class
+    :param total_samples: total number of samples
+    :return: tuple containing (other_same_class, accuracy)
+    """
+    # Create labels: first n_samples_first_class points are class 0, rest are class 1
+    labels = np.ones(total_samples, dtype=int)
+    labels[:n_samples_first_class] = 0
+
+    # Split the data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(tsne_results, labels, test_size=0.2, random_state=42, stratify=labels)
+
+    # Create and train the SVM model
+    svm_model = svm.SVC(kernel='rbf', random_state=42)
+    svm_model.fit(X_train, y_train)
+
+    # Predict on the entire dataset
+    predictions = svm_model.predict(tsne_results)
+
+    # Count the number of points in each class
+    class_counts = np.bincount(predictions)
+    print(f"Points in class 0: {class_counts[0]}")
+    print(f"Points in class 1: {class_counts[1]}")
+
+    # Check if all first n_samples_first_class points are classified as expected
+    first_class_predictions = predictions[:n_samples_first_class]
+    if np.all(first_class_predictions == 0):
+        print(f"All first {n_samples_first_class} points are classified as class 0 as expected.")
+    else:
+        misclassified = np.sum(first_class_predictions != 0)
+        print(f"Warning: {misclassified} out of the first {n_samples_first_class} points were not classified as class 0.")
+
+    # Find indices of other points classified in the same class as the first n_samples_first_class
+    same_class_indices = np.where(predictions == 0)[0]
+    other_same_class = [idx - n_samples_first_class for idx in same_class_indices if idx > n_samples_first_class]
+    print("Indices of other points classified in the same class as the first class:")
+    print(other_same_class)
+
+    # Create a mesh to plot in
+    x_min, x_max = tsne_results[:, 0].min() - 1, tsne_results[:, 0].max() + 1
+    y_min, y_max = tsne_results[:, 1].min() - 1, tsne_results[:, 1].max() + 1
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
+                         np.arange(y_min, y_max, 0.02))
+
+    # Obtain labels for each point in mesh
+    Z = svm_model.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    # Plot the results
+    plt.figure(figsize=(12, 10))
+    plt.contourf(xx, yy, Z, alpha=0.8, cmap=plt.cm.RdYlBu)
+
+    # Plot all points
+    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=predictions, cmap=plt.cm.RdYlBu, edgecolor='black')
+
+    # Highlight the first n_samples_first_class points
+    plt.scatter(tsne_results[:n_samples_first_class, 0], tsne_results[:n_samples_first_class, 1], 
+                c='green', s=100, label=f'First {n_samples_first_class} points', edgecolor='black')
+
+    # Highlight the other points classified in the same class
+    plt.scatter(tsne_results[other_same_class, 0], tsne_results[other_same_class, 1], 
+                c='yellow', s=100, label='Other points in same class', edgecolor='black')
+
+    plt.xlabel('t-SNE feature 1')
+    plt.ylabel('t-SNE feature 2')
+    plt.title('SVM Classification of t-SNE results')
+    plt.colorbar(scatter)
+    plt.legend()
+
+    # Add annotations for class sizes
+    for i, count in enumerate(class_counts):
+        plt.annotate(f'Class {i}: {count} points', 
+                     xy=(0.05, 0.95 - i*0.05), xycoords='axes fraction',
+                     bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
+                     verticalalignment='top')
+
+    plt.show()
+
+    # Calculate and return the accuracy
+    accuracy = svm_model.score(X_test, y_test)
+    print(f"Model accuracy: {accuracy:.2f}")
+
+    return other_same_class, accuracy
 
 
+def analyze_tsne_with_svm_3d(tsne_results, n_samples_first_class, total_samples):
+    """
+    Analyze 3D t-SNE results using SVM classification.
+    
+    :param tsne_results: numpy array of shape (total_samples, 3) containing 3D t-SNE results
+    :param n_samples_first_class: number of samples that should belong to the first class
+    :param total_samples: total number of samples
+    :return: tuple containing (other_same_class, accuracy)
+    """
+    # Create labels: first n_samples_first_class points are class 0, rest are class 1
+    labels = np.zeros(total_samples, dtype=int)
+    labels[n_samples_first_class:] = 1
 
+    # Split the data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(tsne_results, labels, test_size=0.2, random_state=42)
 
+    # Create and train the SVM model
+    svm_model = svm.SVC(kernel='linear', random_state=42)
+    svm_model.fit(X_train, y_train)
 
+    # Predict on the entire dataset
+    predictions = svm_model.predict(tsne_results)
 
+    # Find indices of points classified in the same class as the first n_samples_first_class
+    same_class_indices = np.where(predictions == 0)[0]
+
+    # Create a 3D plot
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot all points
+    scatter = ax.scatter(tsne_results[:, 0], tsne_results[:, 1], tsne_results[:, 2], 
+                         c=predictions, cmap=plt.cm.RdYlBu, edgecolor='black')
+
+    # Highlight the first n_samples_first_class points
+    ax.scatter(tsne_results[:n_samples_first_class, 0], 
+               tsne_results[:n_samples_first_class, 1], 
+               tsne_results[:n_samples_first_class, 2], 
+               c='green', s=100, label=f'First {n_samples_first_class} points', edgecolor='black')
+
+    # Highlight the other points classified in the same class
+    other_same_class = same_class_indices[same_class_indices >= n_samples_first_class]
+    ax.scatter(tsne_results[other_same_class, 0], 
+               tsne_results[other_same_class, 1],
+               tsne_results[other_same_class, 2],
+               c='yellow', s=100, label='Other points in same class', edgecolor='black')
+
+    ax.set_xlabel('t-SNE feature 1')
+    ax.set_ylabel('t-SNE feature 2')
+    ax.set_zlabel('t-SNE feature 3')
+    ax.set_title('SVM Classification of 3D t-SNE results')
+    plt.colorbar(scatter)
+    ax.legend()
+
+    # Add annotations for class sizes
+    print(f"Points in class 0: {np.sum(predictions == 0)}")
+    print(f"Points in class 1: {np.sum(predictions == 1)}")
+
+    plt.show()
+
+    # Calculate and return the accuracy
+    accuracy = svm_model.score(X_test, y_test)
+    print(f"Model accuracy: {accuracy:.2f}")
+
+    return same_class_indices, accuracy
+    
+
+def analyze_tsne_with_kmeans(tsne_results, n_samples_first_class, total_samples, n_clusters=2):
+    """
+    Analyze t-SNE results using K-Means clustering.
+    
+    :param tsne_results: numpy array of shape (total_samples, 2) containing t-SNE results
+    :param n_samples_first_class: number of samples that should belong to the first class
+    :param total_samples: total number of samples
+    :param n_clusters: number of clusters to use in K-Means
+    :return: tuple containing (other_same_class, cluster_labels)
+    """
+    # Convert tsne_results to double precision
+    tsne_results = tsne_results.astype(np.float64)
+
+    # Create labels: first n_samples_first_class points are class 0, rest are randomly assigned
+    labels = np.zeros(total_samples, dtype=int)
+    labels[n_samples_first_class:] = np.random.choice(np.arange(1, n_clusters), size=total_samples - n_samples_first_class)
+
+    # Create and fit the K-Means model
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    cluster_labels = kmeans.fit_predict(tsne_results)
+
+    # Count the number of points in each cluster
+    class_counts = np.bincount(cluster_labels)
+    print(f"Points in cluster 0: {class_counts[0]}")
+    for i in range(1, n_clusters):
+        print(f"Points in cluster {i}: {class_counts[i]}")
+
+    # Check if all first n_samples_first_class points are classified as expected
+    first_class_labels = cluster_labels[:n_samples_first_class]
+    if np.all(first_class_labels == 0):
+        print(f"All first {n_samples_first_class} points are classified in cluster 0 as expected.")
+    else:
+        misclassified = np.sum(first_class_labels != 0)
+        print(f"Warning: {misclassified} out of the first {n_samples_first_class} points were not classified in cluster 0.")
+
+    # Find indices of other points classified in the same cluster as the first n_samples_first_class
+    same_class_indices = np.where(cluster_labels == 0)[0]
+    other_same_class = same_class_indices[same_class_indices >= n_samples_first_class]
+    print("Indices of other points classified in the same cluster as the first class:")
+    print(other_same_class)
+
+    # Create a mesh to plot in
+    x_min, x_max = tsne_results[:, 0].min() - 1, tsne_results[:, 0].max() + 1
+    y_min, y_max = tsne_results[:, 1].min() - 1, tsne_results[:, 1].max() + 1
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
+                         np.arange(y_min, y_max, 0.02))
+
+    # Obtain labels for each point in mesh
+    Z = kmeans.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    # Plot the results
+    plt.figure(figsize=(12, 10))
+    plt.contourf(xx, yy, Z, alpha=0.8, cmap=plt.cm.RdYlBu)
+
+    # Plot all points
+    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=cluster_labels, cmap=plt.cm.RdYlBu, edgecolor='black')
+
+    # Highlight the first n_samples_first_class points
+    plt.scatter(tsne_results[:n_samples_first_class, 0], tsne_results[:n_samples_first_class, 1], 
+                c='green', s=100, label=f'First {n_samples_first_class} points', edgecolor='black')
+
+    # Highlight the other points classified in the same cluster
+    plt.scatter(tsne_results[other_same_class, 0], tsne_results[other_same_class, 1], 
+                c='yellow', s=100, label='Other points in same cluster', edgecolor='black')
+
+    plt.xlabel('t-SNE feature 1')
+    plt.ylabel('t-SNE feature 2')
+    plt.title(f'K-Means Clustering of t-SNE results ({n_clusters} clusters)')
+    plt.colorbar(scatter)
+    plt.legend()
+
+    # Add annotations for cluster sizes
+    for i, count in enumerate(class_counts):
+        plt.annotate(f'Cluster {i}: {count} points', 
+                     xy=(0.05, 0.95 - i*0.05), xycoords='axes fraction',
+                     bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
+                     verticalalignment='top')
+
+    plt.show()
+
+    return other_same_class, cluster_labels
