@@ -195,3 +195,5 @@ contrastive_learning/output_images/
 contrastive_learning/output_npz/
 cnos_foundpose_analysis/
 contrastive_learning/
+cnos_analysis/output_npz
+xoa_out_dir/

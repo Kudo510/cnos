@@ -37,7 +37,8 @@ from torchvision.ops.boxes import batched_nms, box_area
 from segment_anything.modeling.sam import Sam
 from segment_anything.utils.amg import rle_to_mask
 
-from src.model.constrastive_learning import ContrastiveLearningModel, resize_and_pad_image
+from src.model.constrastive_learning import ContrastiveLearningModel
+from src.model.constrastive_learning_utils import resize_and_pad_image
 from src.model.loss import PairwiseSimilarity, Similarity
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
 from src.model.utils import BatchedData, Detections, convert_npz_to_json
@@ -163,9 +164,9 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
     similar_scores = scores[:, similar_template_indices[0].to("cpu")]
 
     # Display the crop
-    plt.imshow(crop_rgb)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(crop_rgb)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     # Round up to two decimal places
     rounded_scores = [math.ceil(score * 1000) / 1000 for score in similar_scores[0]]
@@ -177,19 +178,19 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
     columns = 3
     rows = 2
 
-    for i, index in enumerate(similar_template_indices[0]):
-        fig.add_subplot(rows, columns, i + 1)
-        img = templates[index] # permute(1, 2, 0)
-        plt.imshow(img)
-        plt.axis('off')
-        plt.title(f'Top Template {index}')
+    # for i, index in enumerate(similar_template_indices[0]):
+    #     fig.add_subplot(rows, columns, i + 1)
+    #     img = templates[index] # permute(1, 2, 0)
+    #     plt.imshow(img)
+    #     plt.axis('off')
+    #     plt.title(f'Top Template {index}')
 
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
 
-    # Print the results
-    print("Top 5 scores:", rounded_scores)
-    print("Average score:", rounded_avg_score)
+    # # Print the results
+    # print("Top 5 scores:", rounded_scores)
+    # print("Average score:", rounded_avg_score)
 
     return rounded_avg_score, rounded_scores
 
@@ -410,9 +411,9 @@ def cnos_crop_feature_extraction(crop_rgb, dino_model, device):
     # print("scaled_padded_crop_rgb.shape", scaled_padded_crop_rgb.shape)
 
     # Display the crop
-    plt.imshow(scaled_padded_crop_rgb.squeeze(0).permute(1,2,0))
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(scaled_padded_crop_rgb.squeeze(0).permute(1,2,0))
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     # Extract features from 18th layer of Dinov2 
     layers_list = list(range(24))

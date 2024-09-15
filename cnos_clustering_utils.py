@@ -181,6 +181,166 @@ def hierarchical_clustering(embeddings, n_clusters=2):
     logging.info(f"Number of samples in each cluster: {np.bincount(cluster_labels)}")
 
 
+def analyze_tsne_with_svm_2(tsne_results, n_samples_first_class, total_samples):
+    """
+    Analyze t-SNE results using One-Class SVM classification.
+    
+    :param tsne_results: numpy array of shape (total_samples, 2) containing t-SNE results
+    :param n_samples_first_class: number of samples that should belong to the first class
+    :param total_samples: total number of samples
+    :return: tuple containing (other_same_class, accuracy)
+    """
+    # Use only the first n_samples_first_class points to train the One-Class SVM
+    X_train = tsne_results[:n_samples_first_class]
+
+    # Create and train the One-Class SVM model
+    # svm_model = svm.OneClassSVM(kernel='rbf', nu=0.1)
+    svm_model = svm.OneClassSVM(kernel='poly', degree=3)
+
+    svm_model.fit(X_train)
+
+    # Predict on the entire dataset
+    predictions = svm_model.predict(tsne_results)
+    
+    # In One-Class SVM, 1 indicates points similar to the training set, -1 indicates outliers
+    # We'll consider 1 as our "class 0" (similar to the first n_samples_first_class points)
+    predictions = (predictions + 1) // 2  # Convert -1 to 0, and 1 to 1
+
+    # Find indices of points classified as similar to the first class
+    same_class_indices = np.where(predictions == 1)[0]
+    other_same_class = [idx for idx in same_class_indices if idx >= n_samples_first_class]
+    print("Indices of other points classified as similar to the first class:")
+    print(other_same_class)
+
+    # Create a mesh to plot in
+    x_min, x_max = tsne_results[:, 0].min() - 1, tsne_results[:, 0].max() + 1
+    y_min, y_max = tsne_results[:, 1].min() - 1, tsne_results[:, 1].max() + 1
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
+                         np.arange(y_min, y_max, 0.02))
+
+    # Obtain labels for each point in mesh
+    Z = svm_model.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = (Z + 1) // 2  # Convert -1 to 0, and 1 to 1
+    Z = Z.reshape(xx.shape)
+
+    # Plot the results
+    plt.figure(figsize=(12, 10))
+    plt.contourf(xx, yy, Z, alpha=0.8, cmap=plt.cm.RdYlBu)
+
+    # Plot all points
+    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=predictions, cmap=plt.cm.RdYlBu, edgecolor='black')
+
+    # Highlight the first n_samples_first_class points
+    plt.scatter(tsne_results[:n_samples_first_class, 0], tsne_results[:n_samples_first_class, 1], 
+                c='green', s=100, label=f'First {n_samples_first_class} points', edgecolor='black')
+
+    # Highlight the other points classified as similar
+    plt.scatter(tsne_results[other_same_class, 0], tsne_results[other_same_class, 1],
+                c='yellow', s=100, label='Other similar points', edgecolor='black')
+
+    plt.xlabel('t-SNE feature 1')
+    plt.ylabel('t-SNE feature 2')
+    plt.title('One-Class SVM Classification of t-SNE results')
+    plt.colorbar(scatter)
+    plt.legend()
+
+    # Add annotations for class sizes
+    print(f"Additional points classified as similar: {len(other_same_class)}")
+    print(f"Total points classified as similar: {n_samples_first_class + len(other_same_class)}")
+    print(f"Points classified as different: {total_samples - (n_samples_first_class + len(other_same_class))}")
+
+    plt.show()
+
+    # Calculate the fraction of points classified as similar to the first class
+    similarity_fraction = (n_samples_first_class + len(other_same_class)) / total_samples
+    print(f"Fraction of points classified as similar: {similarity_fraction:.2f}")
+
+    return same_class_indices, similarity_fraction
+
+
+import hdbscan
+from sklearn.metrics import silhouette_score
+from collections import Counter
+
+def analyze_tsne_with_hdbscan(tsne_results, n_samples_first_class, total_samples):
+    """
+    Analyze t-SNE results using HDBSCAN clustering, handling noise points.
+    
+    :param tsne_results: numpy array of shape (total_samples, 2) containing t-SNE results
+    :param n_samples_first_class: number of samples that should belong to the first class
+    :param total_samples: total number of samples
+    :return: tuple containing (other_same_class, silhouette_score)
+    """
+    # Create and fit the HDBSCAN model
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=2, gen_min_span_tree=True)
+    cluster_labels = clusterer.fit_predict(tsne_results)
+
+    # Count the occurrences of each label in the first n_samples_first_class points
+    first_class_label_counts = Counter(cluster_labels[:n_samples_first_class])
+    
+    # Identify the most common non-noise cluster in the first class
+    first_class_cluster = max((label for label in first_class_label_counts if label != -1), 
+                              key=first_class_label_counts.get, default=-1)
+
+    # If all first class points are noise, set first_class_cluster to -1
+    if first_class_cluster == -1:
+        print("Warning: All points in the first class are classified as noise.")
+        other_same_class = []
+    else:
+        # Find indices of other points in the same cluster as the first class
+        same_cluster_indices = np.where(cluster_labels == first_class_cluster)[0]
+        other_same_class = [idx for idx in same_cluster_indices if idx >= n_samples_first_class]
+        other_same_class = [i - n_samples_first_class for i in other_same_class]
+
+    print("Indices of other points in the same cluster as the first class:")
+    print(other_same_class)
+
+    # Calculate silhouette score (excluding noise points)
+    non_noise_mask = cluster_labels != -1
+    if np.sum(non_noise_mask) > 1:  # Ensure we have at least 2 non-noise points
+        silhouette_avg = silhouette_score(tsne_results[non_noise_mask], 
+                                          cluster_labels[non_noise_mask])
+    else:
+        silhouette_avg = 0  # Default value if we can't compute silhouette score
+        print("Warning: Not enough non-noise points to compute silhouette score.")
+
+    # Plot the results
+    plt.figure(figsize=(12, 10))
+
+    # Plot all points
+    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], 
+                          c=cluster_labels, cmap='viridis', s=50, alpha=0.7)
+
+    # Highlight the first n_samples_first_class points
+    plt.scatter(tsne_results[:n_samples_first_class, 0], tsne_results[:n_samples_first_class, 1], 
+                c='red', s=100, label=f'First {n_samples_first_class} points', edgecolor='black')
+
+    # Highlight the other points in the same cluster (if any)
+    if other_same_class:
+        plt.scatter(tsne_results[other_same_class, 0], tsne_results[other_same_class, 1],
+                    c='yellow', s=100, label='Other points in same cluster', edgecolor='black')
+
+    plt.xlabel('t-SNE feature 1')
+    plt.ylabel('t-SNE feature 2')
+    plt.title('HDBSCAN Clustering of t-SNE results')
+    plt.colorbar(scatter, label='Cluster')
+    plt.legend()
+
+    # Add annotations for cluster sizes
+    print(f"Points in the first class: {n_samples_first_class}")
+    print(f"Additional points in the same cluster: {len(other_same_class)}")
+    print(f"Total points in the same cluster: {n_samples_first_class + len(other_same_class)}")
+    print(f"Points in other clusters or noise: {total_samples - (n_samples_first_class + len(other_same_class))}")
+    print(f"Number of noise points: {np.sum(cluster_labels == -1)}")
+
+    plt.show()
+
+    # Print silhouette score
+    print(f"Silhouette Score: {silhouette_avg:.2f}")
+
+    return other_same_class, silhouette_avg
+    
+
 def analyze_tsne_with_svm(tsne_results, n_samples_first_class, total_samples):
     """
     Analyze t-SNE results using SVM classification.

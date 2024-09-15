@@ -452,6 +452,13 @@ def filter_out_invalid_templates(patch_features, masks):
     return num_valid_patches, valid_patch_features
 
 
+def _create_mask(image, threshold=10):
+    return (np.sum(np.array(image), axis=2) > threshold).astype(np.uint8)
+
+def _create_mask2(image, threshold=10): # for 3, H, W images
+    return (np.sum(np.array(image), axis=0) > threshold).astype(np.uint8)
+
+
 def crop_feature_extraction_3(crop_rgb, dino_model, device):
     rgb_normalize = T.Compose(
         [
@@ -490,13 +497,17 @@ def crop_feature_extraction_3(crop_rgb, dino_model, device):
     layers_list = list(range(24))
     torch.cuda.empty_cache()
     with torch.no_grad(): 
-        foundpose_feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device), n=layers_list, return_class_token=True)[18][0].reshape(-1,1024)
-        cnos_feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device), n=layers_list, return_class_token=True)[23][1].reshape(-1,1024).repeat(900,1)
+        foundpose_feature_patches= dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device),
+                                                                             n=layers_list, 
+                                                                             return_class_token=True)[18][0].reshape(-1,1024)
+        cnos_feature_patches = dino_model.module.get_intermediate_layers(scaled_padded_crop_rgb.to(device),
+                                                                         n=layers_list, return_class_token=True)[23][0].reshape(-1,1024)
+                                                                        #  return_class_token=True)[23][1].reshape(-1,1024).repeat(900,1)
     del dino_model
 
     # For new idea - concatenating 2 features
     final_feature_patches = torch.cat((foundpose_feature_patches, cnos_feature_patches), dim=1)
-    num_valid_patches, valid_patch_features = filter_out_invalid_templates(final_feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
+    num_valid_patches, valid_patch_features = filter_out_invalid_templates(cnos_feature_patches.unsqueeze(0), torch.tensor(mask).unsqueeze(0))
 
     # PCA
     # pca = PCA(n_components=256, random_state=5)
@@ -504,13 +515,6 @@ def crop_feature_extraction_3(crop_rgb, dino_model, device):
     # print(pca_crop_patches_descriptors.shape)
 
     return num_valid_patches, valid_patch_features
-
-
-def _create_mask(image, threshold=10):
-    return (np.sum(np.array(image), axis=2) > threshold).astype(np.uint8)
-
-def _create_mask2(image, threshold=10): # for 3, H, W images
-    return (np.sum(np.array(image), axis=0) > threshold).astype(np.uint8)
 
 
 def templates_feature_extraction_3(templates, template_masks, dino_model, num_templates, device):
@@ -560,9 +564,10 @@ def templates_feature_extraction_3(templates, template_masks, dino_model, num_te
                 )[18][0].reshape(size,-1,1024).cpu()
             cnos_batch_feature = dino_model.module.get_intermediate_layers(
                 batch.to(device), n=layers_list, return_class_token=True
-                )[23][1].reshape(size,-1,1024).cpu()
-            batch_feature = torch.cat((foundpose_batch_feature, cnos_batch_feature.repeat(1,900,1)), dim=-1)
-        patch_features.append(batch_feature.to('cpu'))
+                )[23][0].reshape(size,-1,1024).cpu()
+            # batch_feature = torch.cat((foundpose_batch_feature, cnos_batch_feature.repeat(1,900,1)), dim=-1)
+            batch_feature = torch.cat((foundpose_batch_feature, cnos_batch_feature), dim=-1)
+        patch_features.append(cnos_batch_feature.to('cpu'))
         del batch_feature
     patch_features = torch.cat(patch_features)
     del dino_model
