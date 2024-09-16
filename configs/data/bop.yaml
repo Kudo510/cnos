@@ -80,6 +80,11 @@ datasets:
     test: icbin_test_bop19.zip
     pbr_train: icbin_train_pbr.zip
     obj_names: [001_blue_cup, 002_blue_box]
+  banjinjian:
+    cad: banjinjian_models.zip
+    test: banjinjian_test_bop19.zip
+    pbr_train: banjinjian_train_pbr.zip
+    obj_names: [001_ratchet_spanner]
   icmi:
     cad: icmi_models.zip
     test: icmi_test_bop19.zip

@@ -52,8 +52,11 @@
         }
 # Create templates from train_pbr (BlenderProc) or from test (real images)
     In cnos_analysis_4.ipynb - output folder will be in foundpose_analysis folder
-    fro real images- use lower templates since we have less images - just 162 are enough I believe
+    for real images- use lower templates since we have less images - just 162 are enough I believe
+
 # Create templates from CAD models 
+    For arbitarary cad models
+        python -m src.scripts.render_template_with_pyrender_custom level=2 
     python -m src.scripts.render_template_with_pyrender level=1 # 0 is for 42 templates, 3 for 2562 templates
     Templates will be save in the folder templates_pyrender
     10* that [50:450, 150:500, :3] for templates will return better zoomed-in templates - Do that
@@ -71,21 +74,22 @@ Download BlenderProc4BOP set - 10* This is only required when you want to use re
         python -m src.scripts.download_train_pbr
 
 Testing on BOP dataset
-    export DATASET_NAME=icbin 
+    export DATASET_NAME=banjinjian # icbin 
     FAST_SAM and pbr
         python run_inference.py dataset_name=$DATASET_NAME model=cnos_fast
 
     with SAM + pyrender
-        python run_inference.py dataset_name=$DATASET_NAME model.onboarding_config.rendering_type=pyrender
+        python run_inference.py dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender 
+        # dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender
 
     with SAM + PBR
         python run_inference.py dataset_name=icbin
  
 Visulizing the results
-    export DATASET_NAME=icbin 
-    export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin.json
+    export DATASET_NAME=banjinjian 
+    export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_banjinjian.json
 
-    export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pbr_icbin/
+    export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pyrender_banjinjian #sam_pbr_icbin/
     # normal visulization
     python -m src.scripts.visualize dataset_name=$DATASET_NAME input_file=$INPUT_FILE output_dir=$OUTPUT_DIR
 
@@ -103,14 +107,33 @@ Testing on custom image
     bash src/scripts/run_inference_custom.sh
 
 # Testing on dataset xyz
-    export CAD_PATH=datasets/bop23_challenge/datasets/xyz/models/obj_000006.ply
-    export RGB_PATH=datasets/bop23_challenge/datasets/xyz/banjinjian/000001/rgb/000004.png
-    export OUTPUT_DIR=./tmp/custom_dataset
+    move the dataset to dataset- adjust the structure same as other dataset s.t icbin
+        dataset
+            models
+                obj_000001.ply
+            test
+                000001
+                000002
+    also add ino to the bop.yaml file lb
+          banjinjian:
+            cad: banjinjian_models.zip
+            test: banjinjian_test_bop19.zip
+            pbr_train: banjinjian_train_pbr.zip
+            obj_names: [001_ratchet_spanner]
+    then render templates using pyrender lb
+        python -m src.scripts.render_template_with_pyrender_custom level=2 # adjust the path to the models file of the dataset in the script
+    
+    then to infer
+        export DATASET_NAME=banjinjian # icbin 
+        python run_inference.py dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender 
 
-    # render templates from cad models
-    bash src/scripts/render_custom_xyz.sh
+    to visualize
+            export DATASET_NAME=banjinjian 
+            export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_banjinjian.json
 
-    bash src/scripts/run_inference_custom.sh
+            export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pyrender_banjinjian 
+            # normal visulization
+                python -m src.scripts.visualize dataset_name=$DATASET_NAME input_file=$INPUT_FILE output_dir=$OUTPUT_DIR
 
 
 
