@@ -43,8 +43,12 @@ def visualize(cfg: DictConfig) -> None:
     
     os.makedirs(cfg.output_dir, exist_ok=True)
     counter = 0
+    # import pdb; pdb.set_trace()
     for scene_id, image_id in tqdm(list_scene_id_and_frame_id):
         img = Image.open(f'{cfg.root_dir}/{cfg.dataset_name}/{split}/{scene_id:06d}/rgb/{image_id:06d}.png')
+        # for itodd then 
+        # img = Image.open(f'{cfg.root_dir}/{cfg.dataset_name}/{split}/{scene_id:06d}/gray/{image_id:06d}.tif')
+
         rgb = img.copy()
         img = np.array(img)
         masks, object_ids, scores = [], [], []
@@ -54,7 +58,7 @@ def visualize(cfg: DictConfig) -> None:
                 object_ids.append(det['category_id']-1)  ## category_id is object_id
                 scores.append(det['score'])
         # color_map = {obj_id: color for obj_id in np.unique(object_ids)}
-        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) # for itodd: gray=img
         img = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
         # img = (255*img).astype(np.uint8)
         

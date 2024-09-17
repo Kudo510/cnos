@@ -72,6 +72,7 @@ class CNOS(pl.LightningModule):
                 range(len(self.ref_dataset)),
                 desc="Computing descriptors ...",
             ):
+                # import pdb; pdb.set_trace()
                 ref_imgs = self.ref_dataset[idx]["templates"].to(self.device)
                 ref_feats = self.descriptor_model.compute_features(
                     ref_imgs, token_name="x_norm_clstoken"

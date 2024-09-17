@@ -73,23 +73,23 @@ Download BlenderProc4BOP set - 10* This is only required when you want to use re
     For BOP challenge 2023 core datasets (LMO, TLESS, TUDL, ICBIN, ITODD, HB, and TLESS):
         python -m src.scripts.download_train_pbr
 
-Testing on BOP dataset
-    export DATASET_NAME=banjinjian # icbin 
+Testing on BOP dataset- 
+    export DATASET_NAME=itodd # icbin 
     FAST_SAM and pbr
         python run_inference.py dataset_name=$DATASET_NAME model=cnos_fast
 
-    with SAM + pyrender
-        python run_inference.py dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender 
+    with SAM + pyrender # achtung for itodd the last 2 models 27, 28 has a problem- remove the tempalets if wan to test on the dataset
+        python run_inference.py dataset_name=itodd model.onboarding_config.rendering_type=pyrender 
         # dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender
 
     with SAM + PBR
-        python run_inference.py dataset_name=icbin
+        python run_inference.py dataset_name=itodd
  
 Visulizing the results
-    export DATASET_NAME=banjinjian 
-    export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_banjinjian.json
+    export DATASET_NAME=itodd 
+    export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_itodd.json
 
-    export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pyrender_banjinjian #sam_pbr_icbin/
+    export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pyrender_itodd #sam_pbr_icbin/
     # normal visulization
     python -m src.scripts.visualize dataset_name=$DATASET_NAME input_file=$INPUT_FILE output_dir=$OUTPUT_DIR
 
@@ -115,23 +115,23 @@ Testing on custom image
                 000001
                 000002
     also add ino to the bop.yaml file lb
-          banjinjian:
-            cad: banjinjian_models.zip
-            test: banjinjian_test_bop19.zip
-            pbr_train: banjinjian_train_pbr.zip
-            obj_names: [001_ratchet_spanner]
+          daoliuzhao:
+            cad: daoliuzhao_models.zip
+            test: daoliuzhao_test_bop19.zip
+            pbr_train: daoliuzhao_train_pbr.zip
+            obj_names: [001_metal]
     then render templates using pyrender lb
-        python -m src.scripts.render_template_with_pyrender_custom level=2 # adjust the path to the models file of the dataset in the script
+        python -m src.scripts.render_template_with_pyrender_custom level=2 # adjust the path to the models file of the dataset in the script- this one cad_dir and dataset_name
     
     then to infer
-        export DATASET_NAME=banjinjian # icbin 
-        python run_inference.py dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender 
+        export DATASET_NAME=daoliuzhao # icbin 
+        python run_inference.py dataset_name=daoliuzhao model.onboarding_config.rendering_type=pyrender 
 
     to visualize
-            export DATASET_NAME=banjinjian 
-            export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_banjinjian.json
+            export DATASET_NAME=daoliuzhao 
+            export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_daoliuzhao.json
 
-            export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pyrender_banjinjian 
+            export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pyrender_daoliuzhao 
             # normal visulization
                 python -m src.scripts.visualize dataset_name=$DATASET_NAME input_file=$INPUT_FILE output_dir=$OUTPUT_DIR
 

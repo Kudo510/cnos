@@ -85,6 +85,11 @@ datasets:
     test: banjinjian_test_bop19.zip
     pbr_train: banjinjian_train_pbr.zip
     obj_names: [001_ratchet_spanner]
+  daoliuzhao:
+    cad: daoliuzhao_models.zip
+    test: daoliuzhao_test_bop19.zip
+    pbr_train: daoliuzhao_train_pbr.zip
+    obj_names: [001_metal]
   icmi:
     cad: icmi_models.zip
     test: icmi_test_bop19.zip

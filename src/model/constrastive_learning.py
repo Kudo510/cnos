@@ -126,10 +126,11 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
     return all_pos_proposals, all_neg_proposals
 
 
-def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # data_type test or train 
+def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1, target_obj_id=1):  # data_type test or train 
     '''
     For train_pbr folder not test as in extract_dataset
-    Positive crops are the one with 
+    This is the one we choose
+    so we extract the first scene nly for the targetobject 1 only
     '''
     model_type = "vit_h"
     checkpoint_dir =  "datasets/bop23_challenge/pretrained/segment-anything"
@@ -190,7 +191,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1):  # 
             masked_images.append(masked_image)
         # Find visib_mask path based on obj_dicts
         obj_id = 1
-        selected_obj_list = find_visib_mask_path(obj_dicts, frame_path) # the contains the mask of object id 1 and frame_path
+        selected_obj_list = find_visib_mask_path(obj_dicts, frame_path, target_obj_id) # the contains the mask of object id 1 and frame_path
         # mask_paths = sorted(glob.glob(visib_mask_paths))
 
         masks_pred = {

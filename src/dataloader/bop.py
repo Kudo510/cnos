@@ -72,13 +72,17 @@ class BOPTemplate(Dataset):
 
         templates = torch.stack(templates).permute(0, 3, 1, 2)
         masks = torch.stack(masks).permute(0, 3, 1, 2)
-        boxes = torch.tensor(np.array(boxes))
-        templates_croped = self.proposal_processor(images=templates, boxes=boxes)
-        masks_cropped = self.proposal_processor(images=masks, boxes=boxes)
-        return {
-            "templates": self.rgb_transform(templates_croped),
-            "template_masks": masks_cropped[:, 0, :, :],
-        }
+        # x = [box for box in boxes if len(box)<4]
+        # print("Boxes", boxes)
+        if not None in boxes:
+        # import pdb; pdb.set_trace()
+            boxes = torch.tensor(np.array(boxes))
+            templates_croped = self.proposal_processor(images=templates, boxes=boxes)
+            masks_cropped = self.proposal_processor(images=masks, boxes=boxes)
+            return {
+                "templates": self.rgb_transform(templates_croped),
+                "template_masks": masks_cropped[:, 0, :, :],
+            }
 
 
 class BaseBOPTest(BaseBOP):
