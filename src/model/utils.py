@@ -119,7 +119,7 @@ class Detections:
                 self.boxes[idx].float(), self.scores[idx].float(), nms_thresh
             )
             keep_idxs.cat(idx_object_id[keep_idx])
-        keep_idxs = keep_idxs.data
+        keep_idxs = keep_idxs.data.cpu()
         for key in self.keys:
             setattr(self, key, getattr(self, key)[keep_idxs])
 
@@ -190,7 +190,7 @@ class Detections:
             "category_id": self.object_ids + 1
             if dataset_name != "lmo"
             else lmo_object_ids[self.object_ids],
-            # "score": self.scores,
+            "score": self.scores,
             "bbox": boxes,
             # "time": runtime,
             "segmentation": self.masks,

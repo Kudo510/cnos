@@ -336,7 +336,7 @@ def check_similarity_3(best_model_path, masked_images, templates, aggreation_num
             outputs_test.append(euclidean_distance)
 
         outputs_test = torch.stack(outputs_test)
-
+        
         # Average 5 times
         average_outputs_test = torch.sum(outputs_test, dim=0)/outputs_test.shape[0]
         average_predicted = (average_outputs_test < 1).int() 
@@ -350,13 +350,14 @@ def check_similarity_3(best_model_path, masked_images, templates, aggreation_num
         # print(f"Prediction of index{i} is: {outputs_test} as {predicted}")
 
     average_indices = (average_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
+    average_scores = (4-(average_outputs_test[average_indices]))/4
     max_indices = (max_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
     min_indices = (min_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
 
     average_prob = average_outputs_test[average_indices]
     max_prob = max_outputs_test[max_indices]
     min_prob = max_outputs_test[min_indices]
-    return average_indices, max_indices, min_indices, average_prob, max_prob, min_prob, average_outputs_test, outputs_test
+    return average_indices, average_scores, max_indices, min_indices, average_prob, max_prob, min_prob, average_outputs_test, outputs_test
 
 
 def modified_cnos_crop_feature_extraction(crop_rgb, dino_model, device):
@@ -602,7 +603,7 @@ def custom_detections(sam_detections, proposals_features, real_ref_features, fil
     print(f"Saved predictions to {detections_path}")
 
 
-def custom_detections_2(sam_detections, idx_selected_proposals, file_path, scene_id=1, frame_id=1):
+def custom_detections_2(sam_detections, idx_selected_proposals, pred_scores, file_path, scene_id=1, frame_id=1):
     '''
     For classicication model (constrastive loss)
     '''
@@ -637,11 +638,11 @@ def custom_detections_2(sam_detections, idx_selected_proposals, file_path, scene
 
     # keep only detections with score > conf_threshold
     detections.filter(idx_selected_proposals)
-    # detections.add_attribute("scores", pred_scores)
+    detections.add_attribute("scores", pred_scores)
     detections.add_attribute("object_ids", pred_idx_objects)
-    # detections.apply_nms_per_object_id(
-    #     nms_thresh=0.3
-    # )
+    detections.apply_nms_per_object_id(
+        nms_thresh=0.3
+    )
     detections.to_numpy()
 
     for ext in [".json", ".npz"]:
@@ -870,10 +871,10 @@ def _extract_object_by_mask(image, mask, width: int = 512):
     return cropped_image
 
 
-def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, type = "contrastive"):
+def _save_final_results(selected_proposals_indices, average_scores, scene_id, frame_id, sam_detections, dataset, rgb_path, type = "contrastive"):
     # Cnos final results
     file_path = f"contrastive_learning/output_npz/{scene_id:06d}_{frame_id:06d}_{type}"
-    custom_detections_2(sam_detections, selected_proposals_indices, file_path=file_path, scene_id=scene_id, frame_id=frame_id)
+    custom_detections_2(sam_detections, selected_proposals_indices, pred_scores=average_scores, file_path=file_path, scene_id=scene_id, frame_id=frame_id)
     results = np.load(file_path+".npz")
     dets = []
     for i in range(results["segmentation"].shape[0]):
@@ -938,9 +939,9 @@ def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_pat
     syn_templates = [np.array(Image.open(template_file).convert("RGB"))[:,:,:3]/255.0 for template_file in syn_template_files] 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    average_indices, max_indices, min_indices, average_prob, max_prob, min_prob, _, _ = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
+    average_indices, average_scores, max_indices, min_indices, average_prob, max_prob, min_prob, _, _ = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
 
-    _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
+    _save_final_results(selected_proposals_indices=average_indices, average_scores = average_scores, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
     return 0
 
 
@@ -981,7 +982,7 @@ def full_pipeline_non_filtered(custom_sam_model, rgb_path, scene_id, frame_id, b
     syn_templates = [np.array(Image.open(template_file).convert("RGB"))[:,:,:3]/255.0 for template_file in syn_template_files] 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    average_indices, max_indices, min_indices, average_prob, max_prob, min_prob = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
+    average_indices, average_scores, max_indices, min_indices, average_prob, max_prob, min_prob = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
 
-    _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
+    _save_final_results(selected_proposals_indices=average_indices, average_scores= average_scores, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
     return 0
