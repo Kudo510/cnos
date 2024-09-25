@@ -62,7 +62,7 @@ def render(cfg: DictConfig) -> None:
     for dataset_name in [
         # "tless",
         # "tudl",
-        "daoliuzhao",
+        "hudiebanjin",
         # "itodd",
         # "hb",
         # "ycbv",
@@ -77,7 +77,7 @@ def render(cfg: DictConfig) -> None:
         if dataset_name in ["tless"]:
             cad_dir = os.path.join(cfg.data.root_dir, dataset_name, "models/models_cad")
         else:
-            cad_dir = "datasets/bop23_challenge/datasets/daoliuzhao/models" ## change here to models_eval to render from real 3d models
+            cad_dir = "datasets/bop23_challenge/datasets/hudiebanjin/models" ## change here to models_eval to render from real 3d models
         cad_paths = []
         output_dirs = []
         object_ids = sorted(

@@ -19,7 +19,7 @@ reference_dataloader:
 query_dataloader:
   _target_: src.dataloader.bop.BaseBOPTest
   root_dir: ${machine.root_dir}/datasets/
-  split:
+  split: test
   reset_metaData: True
   processing_config:
     image_size: ${model.descriptor_model.image_size}
@@ -80,6 +80,11 @@ datasets:
     test: icbin_test_bop19.zip
     pbr_train: icbin_train_pbr.zip
     obj_names: [001_blue_cup, 002_blue_box]
+  hudiebanjin:
+    cad: hudiebanjin_models.zip
+    test: hudiebanjin_test_bop19.zip
+    pbr_train: hudiebanjin_train_pbr.zip
+    obj_names: [001_metal2]
   banjinjian:
     cad: banjinjian_models.zip
     test: banjinjian_test_bop19.zip

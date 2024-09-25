@@ -24,7 +24,7 @@ import cv2
 
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
 from src.model.constrastive_learning_utils import (extract_object_by_mask, calculate_iou, 
-_remove_very_small_detections, extract_object_by_mask,     
+_remove_very_small_detections, extract_object_by_mask, _tighten_bboxes,    
 _is_mask1_inside_mask2, extract_positive_pairs, extract_negative_pairs_3)
 
 
@@ -125,6 +125,15 @@ def extract_dataset(dataset="icbin",data_type="test", scene_id=1):  # data_type 
 
     return all_pos_proposals, all_neg_proposals
 
+def extract_object_by_mask(image, mask, width: int = 512):
+    mask = Image.fromarray(mask)
+    masked_image = Image.composite(
+        image, Image.new("RGB", image.size, (0, 0, 0)), mask)
+    cropped_image = masked_image.crop(masked_image.getbbox())
+    # new_height = width * cropped_image.height // cropped_image.width
+    
+    return cropped_image, masked_image.getbbox()
+
 
 def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1, target_obj_id=1):  # data_type test or train 
     '''
@@ -176,7 +185,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1, targ
 
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in tqdm(frame_paths[:200]): # only take 200 out of 1000 frames
+    for frame_path in tqdm(frame_paths[50:55]): # only take 200 out of 1000 frames
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
         keep_ids = _remove_very_small_detections(detections["masks"], detections["boxes"])
@@ -188,9 +197,39 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1, targ
             binary_mask = np.array(mask) * 255
             binary_mask = binary_mask.astype(np.uint8)
             masked_image = extract_object_by_mask(rgb, binary_mask)
-            masked_images.append(masked_image)
+            masked_images.append(masked_image[0])
+        # noise_remove_sam_detections = _tighten_bboxes(sam_detections)
+
+        # keep_ids = _remove_very_small_detections(noise_remove_sam_detections["masks"], noise_remove_sam_detections["boxes"])
+
+        # selected_masks = [noise_remove_sam_detections["masks"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+        # selected_bboxes = [noise_remove_sam_detections["boxes"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+
+        # selected_sam_detections = {
+        #         "masks" : torch.stack(selected_masks),
+        #         "boxes" : torch.stack(selected_bboxes)
+        # }
+        # log.info(f"Keeping only {len(selected_masks)} from {selected_sam_detections['masks'].shape[0]} masks")
+
+        # masked_images = []
+        # for mask in selected_sam_detections["masks"].cpu():
+        #     binary_mask = np.array(mask) * 255
+        #     binary_mask = binary_mask.astype(np.uint8)
+        #     masked_image = extract_object_by_mask(rgb, binary_mask)
+        #     masked_images.append(masked_image)
+        # noise_remove_sam_detections = _tighten_bboxes(detections)
+        # keep_ids = _remove_very_small_detections(noise_remove_sam_detections["masks"], noise_remove_sam_detections["boxes"])
+
+        # selected_masks = [noise_remove_sam_detections["masks"][i].cpu() for i in keep_ids]
+        # log.info(f"Keeping only {len(selected_masks)} from {noise_remove_sam_detections['masks'].shape[0]} masks")
+        # masked_images = []
+        # for mask in selected_masks:
+        #     binary_mask = np.array(mask) * 255
+        #     binary_mask = binary_mask.astype(np.uint8)
+        #     masked_image = extract_object_by_mask(rgb, binary_mask)
+        #     masked_images.append(masked_image)
         # Find visib_mask path based on obj_dicts
-        obj_id = 1
+        # obj_id = 1
         selected_obj_list = find_visib_mask_path(obj_dicts, frame_path, target_obj_id) # the contains the mask of object id 1 and frame_path
         # mask_paths = sorted(glob.glob(visib_mask_paths))
 
@@ -219,7 +258,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1, targ
                     }
                     pos_proposals.append(pos_proposal)
 
-                if pred_diff <= 100:
+                if pred_diff <= 2500:
                     pred_is_inside_indices.append(i)
                 
             # log.info(f"For frame {frame_path.split('/')[-1]}, the best for mask {selected_obj['mask_visib_path'].split('/')[-1]} is at index {best_mask_index} ")      
@@ -484,7 +523,7 @@ class BCEModel(nn.Module):
 
 class ContrastiveLearningModel(nn.Module):
     def __init__(self, device):
-        super(ContrastiveLearningModel, self).__init__()  # Initialize the nn.Module superclass
+        super().__init__()  # Initialize the nn.Module superclass
         self.device = device
         dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14_reg')
         dinov2_vitl14.patch_size = 14
@@ -744,7 +783,71 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
                 # Update the best validation loss and save the model state
                 best_val_loss = val_loss
                 best_model_state = model.state_dict()
-                print("best_val_loss: ", best_val_loss)
+                print("best_val_loss: ", best_val_loss/len(val_loader))
+                print("saving best model at epoch: ", epoch)
+                torch.save(best_model_state, 'contrastive_learning/saved_checkpoints/best_model_checkpoint.pth')
+
+        wandb_run.log({
+            'train/epoch': epoch + 1,
+            'train/loss': train_loss/len(train_loader),
+            'eval/loss' : val_loss/len(val_loader),
+            'best_val_loss': best_val_loss/len(val_loader)
+        })
+
+
+def train_cosine_loss(device, model, train_loader, val_loader, num_epochs):
+
+    wandb_run = wandb.init(project="cnos_contrastive_learning")
+    model = model.to(device)
+    criterion = nn.CosineEmbeddingLoss() # use a Classification Cross-Entropy loss
+    optimizer = optim.Adam(model.parameters(), lr=0.00005)
+    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.2)
+
+    # train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
+    # val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, num_workers=1)
+    # test_loader = DataLoader(test_dataset, batch_size=4, shuffle=True, num_workers=1)
+
+    # return train_dataset, train_negative_pairs, train_postive_pairs
+    # Training loop
+    best_val_loss = float('inf')
+    for epoch in trange(int(num_epochs), desc="Training"):
+        train_loss = 0.0
+        for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} in training", leave=False):
+            img1, img2, origin_labels = batch
+            labels = torch.where(origin_labels==0, -1 , origin_labels)
+            img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
+            output1, output2 = model(img1, img2)
+            optimizer.zero_grad()
+            loss = criterion(output1, output2, labels)
+            train_loss += loss.detach().cpu().item() 
+            # print(f"train_loss: {train_loss}")
+            loss.backward()
+            optimizer.step()
+            del img1, img2, labels, batch
+        log.info(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss/len(train_loader):.5f}")
+        if epoch %5 == 0:
+            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/model_checkpoint'+str(epoch)+'.pth')
+
+        if epoch %3 == 0:
+            # Validation
+            val_loss = 0.0
+            model.eval()  #
+            with torch.no_grad():
+                for batch_val in tqdm(val_loader, desc=f"Epoch {epoch + 1} in validation", leave=False):
+                    img1_val, img2_val, label_val_original = batch_val
+                    label_val = torch.where(label_val_original==0, -1 , label_val_original)
+                    img1_val, img2_val, label_val = img1_val.to(device), img2_val.to(device), label_val.to(device)
+                    output1_val, output2_val = model(img1_val, img2_val)
+                    loss = criterion(output1_val, output2_val, label_val)
+                    val_loss += loss.detach().cpu().item()
+                    del img1_val, img2_val, label_val, batch_val
+            log.info(f"Epoch {epoch + 1}/{num_epochs} Validation Loss: {val_loss/len(val_loader):.5f}")
+            # Check if the validation loss is better than the best validation loss so far
+            if val_loss < best_val_loss:
+                # Update the best validation loss and save the model state
+                best_val_loss = val_loss
+                best_model_state = model.state_dict()
+                print("best_val_loss: ", best_val_loss/len(val_loader))
                 print("saving best model at epoch: ", epoch)
                 torch.save(best_model_state, 'contrastive_learning/saved_checkpoints/best_model_checkpoint.pth')
 

@@ -190,7 +190,7 @@ class Detections:
             "category_id": self.object_ids + 1
             if dataset_name != "lmo"
             else lmo_object_ids[self.object_ids],
-            "score": self.scores,
+            # "score": self.scores,
             "bbox": boxes,
             # "time": runtime,
             "segmentation": self.masks,
@@ -235,6 +235,26 @@ def convert_npz_to_json(idx, list_npz_paths):
             "bbox": detections["bbox"][idx_det].tolist(),
             "score": float(detections["score"][idx_det]),
             "time": float(detections["time"]),
+            "segmentation": mask_to_rle(
+                force_binary_mask(detections["segmentation"][idx_det])
+            ),
+        }
+        results.append(result)
+    return results
+
+def convert_npz_to_json_2(idx, list_npz_paths):
+    ''' just remove key time'''
+    npz_path = list_npz_paths[idx]
+    detections = np.load(npz_path)
+    results = []
+    for idx_det in range(len(detections["bbox"])):
+        result = {
+            "scene_id": int(detections["scene_id"]),
+            "image_id": int(detections["image_id"]),
+            "category_id": int(detections["category_id"][idx_det]),
+            "bbox": detections["bbox"][idx_det].tolist(),
+            "score": 1.0, # float(detections["score"][idx_det]),
+            # "time": float(detections["time"]),
             "segmentation": mask_to_rle(
                 force_binary_mask(detections["segmentation"][idx_det])
             ),

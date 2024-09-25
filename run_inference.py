@@ -36,6 +36,7 @@ def run_inference(cfg: DictConfig):
     else:
         query_dataloader_config.split = "test"
     query_dataloader_config.root_dir += f"{cfg.dataset_name}" # ./datasets/bop23_challenge/datasets/tless
+    # import pdb; pdb.set_trace()
     query_dataset = instantiate(query_dataloader_config) # src.dataloader.bop.BaseBOPTest for tless
 
     logging.info("Initializing model")
@@ -51,6 +52,7 @@ def run_inference(cfg: DictConfig):
         shuffle=False,
     )
     if cfg.model.onboarding_config.rendering_type == "pyrender": # our case pbr not pyrender
+
         ref_dataloader_config.template_dir += f"templates_pyrender/{cfg.dataset_name}"
         ref_dataset = instantiate(ref_dataloader_config)
     elif cfg.model.onboarding_config.rendering_type == "pbr": # here our case

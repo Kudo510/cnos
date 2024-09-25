@@ -350,6 +350,73 @@ def check_similarity_3(best_model_path, masked_images, templates, aggreation_num
         # print(f"Prediction of index{i} is: {outputs_test} as {predicted}")
 
     average_indices = (average_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
+    max_indices = (max_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
+    min_indices = (min_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
+
+    average_prob = average_outputs_test[average_indices]
+    max_prob = max_outputs_test[max_indices]
+    min_prob = max_outputs_test[min_indices]
+    return average_indices, max_indices, min_indices, average_prob, max_prob, min_prob, average_outputs_test, outputs_test
+
+def check_similarity_cosine(best_model_path, masked_images, templates, aggreation_num_templates, device):
+    '''
+    This is similarity checking_3 but the scores will be as the cosine similariy
+    '''
+    # Set radom seed
+    random.seed(10)
+    
+    transform = T.Compose(
+        [
+            # transforms.Lambda(lambda x: x / 255.0),  # Ensures the scaling by 255.0
+            # T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+    model = ContrastiveLearningModel(device)
+    model.load_state_dict(torch.load(best_model_path))
+    model = model.to(device)
+
+    transformed_temps = []
+    for i, temp in enumerate(templates):
+        img2 = transform(resize_and_pad_image(np.transpose(temp, (2,0,1)))).float().to(device)
+        transformed_temps.append(img2)
+
+    selected_temps = torch.stack(random.choices(transformed_temps, k=len(masked_images)*aggreation_num_templates)) # Generate a list of 167 images randomly chosen from the 162 images
+    # Stack the selected images to create a tensor of shape (5, 2, 224, 224)
+    # stacked_temps = torch.stack(selected_temps)
+    # transformed_temps = torch.stack(transformed_temps)
+
+    # Convert from 1,3,224,224 to 162,3,224,224 - but 162 is too much -try with 5 templates only
+    crops = [np.transpose(np.array(img)[:,:,:3]/255.0, (2,0,1)) for img in masked_images]
+    transformed_crops = torch.stack([transform(resize_and_pad_image(crop, target_max=224)).float().to(device)
+                                        for crop in crops]) # Must be normalized with size of 3, 224,224 and in torch
+    # stacked_img1 = img1.repeat(num_templates,1,1,1)
+
+    model.eval()
+    with torch.no_grad():
+        outputs_test = []
+        for i in range(aggreation_num_templates):
+            t = selected_temps[len(masked_images)*i : len(masked_images)*(i+1)]
+            outputs1, outputs2 = model(transformed_crops, t)
+            euclidean_distance = nn.functional.pairwise_distance(outputs1, outputs2)
+            outputs_test.append(euclidean_distance)
+
+        outputs_test = torch.stack(outputs_test)
+        
+        # Average 5 times
+        average_outputs_test = torch.sum(outputs_test, dim=0)/outputs_test.shape[0]
+        average_predicted = (average_outputs_test < 1).int() 
+        # Max out of 5
+        max_outputs_test, _ = torch.max(outputs_test, dim=0)
+        max_predicted = (max_outputs_test < 1).int() 
+        # Min out of 5
+        min_outputs_test, _ = torch.min(outputs_test, dim=0)
+        min_predicted = (min_outputs_test < 1).int() 
+
+        # print(f"Prediction of index{i} is: {outputs_test} as {predicted}")
+
+    average_indices = (average_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
     average_scores = (4-(average_outputs_test[average_indices]))/4
     max_indices = (max_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
     min_indices = (min_predicted.squeeze() == 1).nonzero(as_tuple=False).flatten()
@@ -603,7 +670,7 @@ def custom_detections(sam_detections, proposals_features, real_ref_features, fil
     print(f"Saved predictions to {detections_path}")
 
 
-def custom_detections_2(sam_detections, idx_selected_proposals, pred_scores, file_path, scene_id=1, frame_id=1):
+def custom_detections_2(sam_detections, idx_selected_proposals, file_path, scene_id=1, frame_id=1):
     '''
     For classicication model (constrastive loss)
     '''
@@ -638,11 +705,12 @@ def custom_detections_2(sam_detections, idx_selected_proposals, pred_scores, fil
 
     # keep only detections with score > conf_threshold
     detections.filter(idx_selected_proposals)
-    detections.add_attribute("scores", pred_scores)
+    
+    # detections.add_attribute("scores", pred_scores)
     detections.add_attribute("object_ids", pred_idx_objects)
-    detections.apply_nms_per_object_id(
-        nms_thresh=0.3
-    )
+    # detections.apply_nms_per_object_id(
+    #     nms_thresh=0.3
+    # )
     detections.to_numpy()
 
     for ext in [".json", ".npz"]:
@@ -871,10 +939,10 @@ def _extract_object_by_mask(image, mask, width: int = 512):
     return cropped_image
 
 
-def _save_final_results(selected_proposals_indices, average_scores, scene_id, frame_id, sam_detections, dataset, rgb_path, type = "contrastive"):
+def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, type = "contrastive"):
     # Cnos final results
     file_path = f"contrastive_learning/output_npz/{scene_id:06d}_{frame_id:06d}_{type}"
-    custom_detections_2(sam_detections, selected_proposals_indices, pred_scores=average_scores, file_path=file_path, scene_id=scene_id, frame_id=frame_id)
+    custom_detections_2(sam_detections, selected_proposals_indices, file_path=file_path, scene_id=scene_id, frame_id=frame_id)
     results = np.load(file_path+".npz")
     dets = []
     for i in range(results["segmentation"].shape[0]):
@@ -932,16 +1000,16 @@ def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_pat
     syn_data_type = "train_pbr" # test
     out_folder = f"foundpose_analysis/{dataset}/templates"
     # Load original templates when before putting through dinov2 we also apply transformation.
-    syn_template_path_1 = f"{out_folder}/{syn_data_type}_images_templates/obj_{obj_id:06d}_original" 
+    syn_template_path_1 = f"{out_folder}/{syn_data_type}/obj_{obj_id:06d}_original" 
     syn_template_files_1 = sorted(glob.glob(os.path.join(syn_template_path_1, "*.png")), key=os.path.getmtime)
     syn_template_files = syn_template_files_1 # + syn_template_files_2
     syn_num_templates = len(syn_template_files)
     syn_templates = [np.array(Image.open(template_file).convert("RGB"))[:,:,:3]/255.0 for template_file in syn_template_files] 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    average_indices, average_scores, max_indices, min_indices, average_prob, max_prob, min_prob, _, _ = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
+    average_indices, max_indices, min_indices, average_prob, max_prob, min_prob, _, _ = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
 
-    _save_final_results(selected_proposals_indices=average_indices, average_scores = average_scores, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
+    _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
     return 0
 
 

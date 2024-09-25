@@ -115,18 +115,18 @@ Testing on custom image
                 000001
                 000002
     also add ino to the bop.yaml file lb
-          daoliuzhao:
-            cad: daoliuzhao_models.zip
-            test: daoliuzhao_test_bop19.zip
-            pbr_train: daoliuzhao_train_pbr.zip
-            obj_names: [001_metal]
+          hudiebanjin:
+            cad: hudiebanjin_models.zip
+            test: hudiebanjin_test_bop19.zip
+            pbr_train: hudiebanjin_train_pbr.zip
+            obj_names: [001_hudiebanjin]
     then render templates using pyrender lb
         python -m src.scripts.render_template_with_pyrender_custom level=2 # adjust the path to the models file of the dataset in the script- this one cad_dir and dataset_name
     
     then to infer
-        export DATASET_NAME=daoliuzhao # icbin 
-        python run_inference.py dataset_name=daoliuzhao model.onboarding_config.rendering_type=pyrender 
-
+        export DATASET_NAME=hudiebanjin # icbin 
+        HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=hudiebanjin model.onboarding_config.rendering_type=pyrender 
+            HYDRA_FULL_ERROR=1  to show full error with for hydra
     to visualize
             export DATASET_NAME=daoliuzhao 
             export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_daoliuzhao.json

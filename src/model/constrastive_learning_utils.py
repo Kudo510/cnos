@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from tqdm import tqdm, trange
 import pickle
 import wandb
+import cv2
 from torchvision.ops.boxes import batched_nms, box_area
 
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
@@ -100,7 +101,7 @@ def geodesic_numpy(R1, R2):
 
 def _augment_pos_pairs(pos_pairs):
     augmented_pos_pairs = []
-    rotation_angles = [45, 90, 135, 180, 225]
+    rotation_angles = [45, 90, 135] # [45, 90, 135, 180, 225]
     
     for pos_pair in pos_pairs:
         # Add the original pair
@@ -123,40 +124,41 @@ def extract_positive_pairs(all_pos_proposals, templates):
 
     pos_pairs = list()
     for proposals_id in trange(len(all_pos_proposals)):
-        obj_query_pose = all_pos_proposals[proposals_id]["pose"][None]
-        obj_template_poses = templates["poses"]
+        if all_pos_proposals[proposals_id]["pose"] is not None:
+            obj_query_pose = all_pos_proposals[proposals_id]["pose"][None]
+            obj_template_poses = templates["poses"]
 
-        return_inplane = True
+            return_inplane = True
 
-        obj_query_openGL_pose = opencv2opengl(obj_query_pose)
-        obj_query_openGL_location = obj_query_openGL_pose[:, 2, :3]  # Mx3 # (translation components) -  It assumes that the 3D location is found in the third column of the pose matrices.
-        obj_template_openGL_poses = opencv2opengl(obj_template_poses)
-        obj_template_openGL_locations = obj_template_openGL_poses[:, 2, :3]  # Nx3 # (translation components)
+            obj_query_openGL_pose = opencv2opengl(obj_query_pose)
+            obj_query_openGL_location = obj_query_openGL_pose[:, 2, :3]  # Mx3 # (translation components) -  It assumes that the 3D location is found in the third column of the pose matrices.
+            obj_template_openGL_poses = opencv2opengl(obj_template_poses)
+            obj_template_openGL_locations = obj_template_openGL_poses[:, 2, :3]  # Nx3 # (translation components)
 
-        # find the nearest template
-        # It computes the pairwise distances between each query pose location and each template pose location using cdist.
-        distances = cdist(obj_query_openGL_location, obj_template_openGL_locations)
-        best_index_in_pose_distribution = np.argmin(distances, axis=-1)  # M
-        if return_inplane:
-            nearest_poses = obj_template_poses[best_index_in_pose_distribution]
-            inplanes = np.zeros(len(obj_query_pose))
-            for idx in range(len(obj_query_pose)):
-                rot_query_openCV = obj_query_pose[idx, :3, :3]
-                rot_template_openCV = nearest_poses[idx, :3, :3]
-                inplanes[idx] = compute_inplane(rot_query_openCV, rot_template_openCV)
-        d, x, y = np.transpose(all_pos_proposals[proposals_id]['rgb'], (2,0,1)).shape
-        log.info(f"Size of pos proposal: {d,x,y}")
-        if d ==0 or x == 0 or y ==0:
-            continue
-        pos_pair = {
-            "img1" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224)), 
-            "img2" : transform(resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224)), # resize and pad images
-            "label" : 1
-        }
-        log.info(f"pos_pair['img1'].shape[-1], pos_pair['img2'].shape[-1]: {pos_pair['img1'].shape[-1]}, {pos_pair['img2'].shape[-1]}" )
-        if pos_pair["img1"].shape[-1] != pos_pair["img2"].shape[-1]:
-            continue
-        pos_pairs.append(pos_pair)
+            # find the nearest template
+            # It computes the pairwise distances between each query pose location and each template pose location using cdist.
+            distances = cdist(obj_query_openGL_location, obj_template_openGL_locations)
+            best_index_in_pose_distribution = np.argmin(distances, axis=-1)  # M
+            if return_inplane:
+                nearest_poses = obj_template_poses[best_index_in_pose_distribution]
+                inplanes = np.zeros(len(obj_query_pose))
+                for idx in range(len(obj_query_pose)):
+                    rot_query_openCV = obj_query_pose[idx, :3, :3]
+                    rot_template_openCV = nearest_poses[idx, :3, :3]
+                    inplanes[idx] = compute_inplane(rot_query_openCV, rot_template_openCV)
+            d, x, y = np.transpose(all_pos_proposals[proposals_id]['rgb'], (2,0,1)).shape
+            log.info(f"Size of pos proposal: {d,x,y}")
+            if d ==0 or x == 0 or y ==0:
+                continue
+            pos_pair = {
+                "img1" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224)), 
+                "img2" : transform(resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224)), # resize and pad images
+                "label" : 1
+            }
+            log.info(f"pos_pair['img1'].shape[-1], pos_pair['img2'].shape[-1]: {pos_pair['img1'].shape[-1]}, {pos_pair['img2'].shape[-1]}" )
+            if pos_pair["img1"].shape[-1] != pos_pair["img2"].shape[-1]:
+                continue
+            pos_pairs.append(pos_pair)
 
     augmented_pos_pairs = _augment_pos_pairs(pos_pairs)
     return augmented_pos_pairs
@@ -333,7 +335,7 @@ def calculate_iou(ground_truth, prediction):
     return iou_score
 
 
-def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=100):
+def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=500):
     # Ensure masks are binary (0 or 1)
     mask1 = (mask1 > 0).astype(int)
     mask2 = (mask2 > 0).astype(int)
@@ -348,14 +350,42 @@ def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=100):
     # return difference <= noise_threshold
 
 
+def _tighten_bboxes(sam_detections, device="cuda"):
+    # Apply morphological opening - it does eorion then dilation to remove noise
+    kernel = np.ones((5,5), np.uint8)
+
+    filtered_masks = list()
+    for mask in sam_detections["masks"].cpu():
+        filtered_mask = cv2.morphologyEx(np.array(mask, dtype="uint8"), cv2.MORPH_OPEN, kernel)
+        filtered_masks.append(torch.tensor(filtered_mask))
+    sam_detections["masks"] = torch.stack(filtered_masks).to(device)
+    return sam_detections
+
+
 def _remove_very_small_detections(masks, boxes): # after this step only valid boxes, masks are saved, other are filtered out
-        min_box_size = 0.05 # relative to image size 
-        min_mask_size = 4e-4 # relative to image size
-        img_area = masks.shape[1] * masks.shape[2]
-        box_areas = box_area(boxes) / img_area
-        mask_areas = masks.sum(dim=(1, 2)) / img_area
-        keep_idxs = torch.logical_and(
-            box_areas > min_box_size**2, mask_areas > min_mask_size
-        )
-        indices = torch.nonzero(keep_idxs).squeeze().tolist()
-        return indices
+    min_box_size = 0.05 # relative to image size 
+    min_mask_size = 300/(640*480) # relative to image size assume the pixesl should be in range (300, 10000) need to remove them 
+    max_mask_size = 10000/(640*480) 
+    img_area = masks.shape[1] * masks.shape[2]
+    box_areas = box_area(boxes) / img_area
+    formatted_values = [f'{value.item():.6f}' for value in box_areas*img_area]
+    mask_areas = masks.sum(dim=(1, 2)) / img_area
+    keep_idxs = torch.logical_and(
+        torch.logical_and(mask_areas > min_mask_size, mask_areas < max_mask_size),
+        box_areas > min_box_size**2
+    )
+    indices = torch.nonzero(keep_idxs).squeeze().tolist()
+    return indices
+
+
+# def _remove_very_small_detections(masks, boxes): # after this step only valid boxes, masks are saved, other are filtered out
+#         min_box_size = 0.05 # relative to image size 
+#         min_mask_size = 4e-4 # relative to image size
+#         img_area = masks.shape[1] * masks.shape[2]
+#         box_areas = box_area(boxes) / img_area
+#         mask_areas = masks.sum(dim=(1, 2)) / img_area
+#         keep_idxs = torch.logical_and(
+#             box_areas > min_box_size**2, mask_areas > min_mask_size
+#         )
+#         indices = torch.nonzero(keep_idxs).squeeze().tolist()
+#         return indices
