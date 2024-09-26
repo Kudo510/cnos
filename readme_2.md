@@ -82,8 +82,8 @@ Testing on BOP dataset-
         python run_inference.py dataset_name=itodd model.onboarding_config.rendering_type=pyrender 
         # dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender
 
-    with SAM + PBR
-        python run_inference.py dataset_name=itodd
+    with SAM + PBR # remmber use the original bop_pbr.py
+        python run_inference.py dataset_name=hudiebanjin
  
 Visulizing the results
     export DATASET_NAME=itodd 
@@ -128,10 +128,10 @@ Testing on custom image
         HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=hudiebanjin model.onboarding_config.rendering_type=pyrender 
             HYDRA_FULL_ERROR=1  to show full error with for hydra
     to visualize
-            export DATASET_NAME=daoliuzhao 
-            export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_daoliuzhao.json
+            export DATASET_NAME=hudiebanjin 
+            export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_hudiebanjin.json
 
-            export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pyrender_daoliuzhao 
+            export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pbr_hudiebanjin 
             # normal visulization
                 python -m src.scripts.visualize dataset_name=$DATASET_NAME input_file=$INPUT_FILE output_dir=$OUTPUT_DIR
 

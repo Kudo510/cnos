@@ -101,7 +101,7 @@ def geodesic_numpy(R1, R2):
 
 def _augment_pos_pairs(pos_pairs):
     augmented_pos_pairs = []
-    rotation_angles = [45, 90, 135] # [45, 90, 135, 180, 225]
+    rotation_angles = [45, 90, 135, 180, 225] # [45, 90, 135] # 
     
     for pos_pair in pos_pairs:
         # Add the original pair

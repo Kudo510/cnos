@@ -185,7 +185,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1, targ
 
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in tqdm(frame_paths[50:55]): # only take 200 out of 1000 frames
+    for frame_path in tqdm(frame_paths[50:300]): # only take 200 out of 1000 frames
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
         keep_ids = _remove_very_small_detections(detections["masks"], detections["boxes"])
@@ -258,7 +258,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1, targ
                     }
                     pos_proposals.append(pos_proposal)
 
-                if pred_diff <= 2500:
+                if pred_diff <= 2000:
                     pred_is_inside_indices.append(i)
                 
             # log.info(f"For frame {frame_path.split('/')[-1]}, the best for mask {selected_obj['mask_visib_path'].split('/')[-1]} is at index {best_mask_index} ")      
@@ -763,7 +763,7 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
             del img1, img2, labels, batch
         log.info(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss/len(train_loader):.5f}")
         if epoch %5 == 0:
-            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/model_checkpoint'+str(epoch)+'.pth')
+            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/hudiebanji_augmented_more angles/model_checkpoint'+str(epoch)+'.pth')
 
         if epoch %3 == 0:
             # Validation
@@ -785,7 +785,7 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
                 best_model_state = model.state_dict()
                 print("best_val_loss: ", best_val_loss/len(val_loader))
                 print("saving best model at epoch: ", epoch)
-                torch.save(best_model_state, 'contrastive_learning/saved_checkpoints/best_model_checkpoint.pth')
+                torch.save(best_model_state, 'contrastive_learning/saved_checkpoints/hudiebanji_augmented_more angles/best_model_checkpoint.pth')
 
         wandb_run.log({
             'train/epoch': epoch + 1,
