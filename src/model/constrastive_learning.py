@@ -25,7 +25,7 @@ import cv2
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
 from src.model.constrastive_learning_utils import (extract_object_by_mask, calculate_iou, 
 _remove_very_small_detections, extract_object_by_mask, _tighten_bboxes,    
-_is_mask1_inside_mask2, extract_positive_pairs, extract_negative_pairs_3)
+_is_mask1_inside_mask2, extract_positive_pairs, extract_positive_pairs_xyz, extract_negative_pairs_3)
 
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
@@ -185,7 +185,7 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1, targ
 
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in tqdm(frame_paths[50:300]): # only take 200 out of 1000 frames
+    for frame_path in tqdm(frame_paths[50:55]): # only take 200 out of 1000 frames
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
         keep_ids = _remove_very_small_detections(detections["masks"], detections["boxes"])
@@ -278,6 +278,152 @@ def extract_dataset_train_pbr(dataset="icbin",data_type="test", scene_id=1, targ
         log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(final_pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
 
     return all_pos_proposals, all_neg_proposals, best_mask_indices
+
+
+def extract_dataset_train_pbr_xyz(dataset="icbin",data_type="test", scene_id=1, target_obj_id=1):  # data_type test or train 
+    '''
+    For train_pbr folder not test as in extract_dataset
+    This is the one we choose
+    so we extract the first scene nly for the targetobject 1 only
+    '''
+    model_type = "vit_h"
+    checkpoint_dir =  "datasets/bop23_challenge/pretrained/segment-anything"
+    log.info("loading sam")
+    sam_model = load_sam(model_type, checkpoint_dir)
+    custom_sam_model = CustomSamAutomaticMaskGenerator(sam=sam_model)
+    custom_sam_model.predictor.model.to("cuda")
+
+    frame_paths = f"datasets/bop23_challenge/datasets/{dataset}/{data_type}/{scene_id:06d}/rgb/*.jpg" #"datasets/bop23_challenge/datasets/icbin/test/000001/rgb/000008.png"
+    frame_paths = sorted(glob.glob(frame_paths)) # only 50 not 55 paths - some ids are missing s.t 10
+
+    scene_gt_json = f"datasets/bop23_challenge/datasets/{dataset}/{data_type}/{scene_id:06d}/scene_gt.json"
+    scene_gt = json.load(open(scene_gt_json, 'r'))
+    
+    obj_dicts = []
+    # for frame_id in range(len(scene_gt)):
+    for frame_id in range(len(scene_gt)): ## Only for the first 200 scenes - not all of it - too much
+        for i, obj in enumerate(scene_gt[str(frame_id)]):
+            obj_id = obj["obj_id"] # real object id in the frame
+
+            R = np.array(obj["cam_R_m2c"]).reshape(3,3)
+            t = np.array(obj["cam_t_m2c"])
+            pose = np.eye(4)
+            pose[:3, :3] = R
+            pose[:3, 3] = t
+
+            mask_visib_id = f"{frame_id:06d}_{i:06d}"
+            mask_visib_path = f"datasets/bop23_challenge/datasets/{dataset}/{data_type}/{scene_id:06d}/mask_visib/{mask_visib_id}.png"
+
+            frame_path = f"datasets/bop23_challenge/datasets/{dataset}/{data_type}/{scene_id:06d}/rgb/{frame_id:06d}.jpg"
+            obj_dict = {
+                "obj_id" : obj_id,
+                "scene_id" : f"{scene_id:06d}", 
+                "mask_visib_path" : mask_visib_path,
+                "frame_path" : frame_path,
+                "pose" : pose
+            }
+            obj_dicts.append(obj_dict)
+
+    def find_visib_mask_path(data_list, frame_path, target_obj_id=1):
+        return [item for item in data_list if item['obj_id'] == 
+                     target_obj_id and item['frame_path'] == frame_path]
+
+    all_pos_proposals = []
+    all_neg_proposals = []
+    for frame_path in tqdm(frame_paths[0:150]): # only take 200 out of 1000 frames
+        rgb = Image.open(frame_path).convert("RGB") # rotate(180)
+        detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
+        keep_ids = _remove_very_small_detections(detections["masks"], detections["boxes"])
+
+        selected_masks = [detections["masks"][i].cpu() for i in keep_ids]
+        log.info(f"Keeping only {len(selected_masks)} from {detections['masks'].shape[0]} masks")
+        masked_images = []
+        for mask in selected_masks:
+            binary_mask = np.array(mask) * 255
+            binary_mask = binary_mask.astype(np.uint8)
+            masked_image = extract_object_by_mask(rgb, binary_mask)
+            masked_images.append(masked_image[0])
+        # noise_remove_sam_detections = _tighten_bboxes(sam_detections)
+
+        # keep_ids = _remove_very_small_detections(noise_remove_sam_detections["masks"], noise_remove_sam_detections["boxes"])
+
+        # selected_masks = [noise_remove_sam_detections["masks"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+        # selected_bboxes = [noise_remove_sam_detections["boxes"][i] for i in range(len(keep_ids)) if keep_ids[i]]
+
+        # selected_sam_detections = {
+        #         "masks" : torch.stack(selected_masks),
+        #         "boxes" : torch.stack(selected_bboxes)
+        # }
+        # log.info(f"Keeping only {len(selected_masks)} from {selected_sam_detections['masks'].shape[0]} masks")
+
+        # masked_images = []
+        # for mask in selected_sam_detections["masks"].cpu():
+        #     binary_mask = np.array(mask) * 255
+        #     binary_mask = binary_mask.astype(np.uint8)
+        #     masked_image = extract_object_by_mask(rgb, binary_mask)
+        #     masked_images.append(masked_image)
+        # noise_remove_sam_detections = _tighten_bboxes(detections)
+        # keep_ids = _remove_very_small_detections(noise_remove_sam_detections["masks"], noise_remove_sam_detections["boxes"])
+
+        # selected_masks = [noise_remove_sam_detections["masks"][i].cpu() for i in keep_ids]
+        # log.info(f"Keeping only {len(selected_masks)} from {noise_remove_sam_detections['masks'].shape[0]} masks")
+        # masked_images = []
+        # for mask in selected_masks:
+        #     binary_mask = np.array(mask) * 255
+        #     binary_mask = binary_mask.astype(np.uint8)
+        #     masked_image = extract_object_by_mask(rgb, binary_mask)
+        #     masked_images.append(masked_image)
+        # Find visib_mask path based on obj_dicts
+        # obj_id = 1
+        selected_obj_list = find_visib_mask_path(obj_dicts, frame_path, target_obj_id) # the contains the mask of object id 1 and frame_path
+        # mask_paths = sorted(glob.glob(visib_mask_paths))
+
+        masks_pred = {
+            "masks" : [np.array(mask.cpu()).astype(int) for mask in selected_masks],
+            "rgb" : [rgb for rgb in masked_images]
+        }
+
+        best_mask_indices = []
+        pos_proposals = []
+        pred_is_inside_indices = []
+        for selected_obj in selected_obj_list:
+            for i, mask_pred in enumerate(masks_pred["masks"]):
+                mask_gt = (np.array(Image.open(selected_obj["mask_visib_path"]).convert("L"))>0).astype(int)
+
+                pred_diff, pred_is_inside = _is_mask1_inside_mask2(mask_pred, mask_gt)
+                gt_diff, gt_is_inside = _is_mask1_inside_mask2(mask_gt, mask_pred)
+                # log.info(f"Difference between mask {selected_obj['mask_visib_path'].split('/')[-1]} and proposal index {i} is {pred_diff, gt_diff}")
+                if pred_is_inside or gt_is_inside:
+                    best_mask_indices.append(i)
+                    # pos_proposal rgb from prediction and pose from gt
+                    pos_proposal = {
+                        "idx" : i,
+                        "rgb": np.array(masks_pred["rgb"][i])/255.0,
+                        "pose": selected_obj["pose"]
+                    }
+                    pos_proposals.append(pos_proposal)
+
+                if pred_diff <= 2000:
+                    pred_is_inside_indices.append(i)
+                
+            # log.info(f"For frame {frame_path.split('/')[-1]}, the best for mask {selected_obj['mask_visib_path'].split('/')[-1]} is at index {best_mask_index} ")      
+        
+        best_mask_indices = list(set(best_mask_indices))
+        pred_is_inside_indices = list(set(pred_is_inside_indices))
+        final_pos_proposals = [{
+            "idx": i,
+            "rgb": next((pos["rgb"] for pos in pos_proposals if pos["idx"] == i), None),
+            "pose": next((pos["pose"] for pos in pos_proposals if pos["idx"] == i), None)
+        } for i in pred_is_inside_indices] # change to best_mask_indices for threhold 100
+       
+        del detections
+    
+        all_pos_proposals.append(final_pos_proposals)
+        all_neg_proposals.append([np.array(masked_images[j])/255.0 for j in range(len(masked_images)) if j not in pred_is_inside_indices])
+        log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(final_pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
+
+    return all_pos_proposals, all_neg_proposals, best_mask_indices
+
 
 def extract_dataset_train_pbr_2(dataset="icbin",data_type="test", scene_id=1):  # data_type test or train 
     '''
@@ -671,6 +817,69 @@ def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_
 
     return train_dataset, val_dataset, test_dataset, train_negative_pairs, train_postive_pairs
 
+def prepare_dataset_xyz(template_paths, template_poses_path, all_pos_proposals, all_neg_proposals):
+
+    # Data loading and preprocessing
+    # sigma_range = (0.5, 2.0)
+    # rotation_angles = [30, 60, 90, 120, 150]
+    # transform = transforms.Compose(
+    #     [
+    #         # transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+    #         # transforms.GaussianBlur(kernel_size=(5, 5), sigma=sigma_range), 
+    #         # transforms.ColorJitter(brightness=(1.1, 1.2)),
+    #         # transforms.ColorJitter(brightness=(0.7, 0.9)),
+    #         # transforms.RandomAutocontrast(p=1)
+    #         transforms.RandomHorizontalFlip(),  # Random horizontal flip
+    #         transforms.RandomVerticalFlip(),  # Random horizontal flip
+    #         # MultiRotate(rotation_angles),  # Custom MultiRotate transformation
+
+    #     ]
+    # )
+
+    jitter_strength =1
+    color_jitter = transforms.ColorJitter(
+        0.8 * jitter_strength,
+        0.8 * jitter_strength,
+        0.8 * jitter_strength,
+        0.2 * jitter_strength
+    )
+
+    input_height = 224 # shape of input image
+    data_transforms = [
+        transforms.RandomApply([color_jitter], p=0.8),
+        GaussianBlur(kernel_size=int(0.1 * input_height)-1, p=0.5), # kernelsize must be odd number
+        transforms.ToTensor()
+    ]
+    train_transform = transforms.Compose(data_transforms)
+
+    template_paths = sorted(glob.glob(template_paths))
+    # For train_pbr templates
+    with open(template_poses_path, 'rb') as file:
+        template_poses = np.array(pickle.load(file))
+
+    # # For pyrender templates
+    # template_poses = np.load(template_poses_path)
+
+    templates = {
+        "rgb" : [np.array(Image.open(template_path).convert("RGB"))/255.0 for template_path in template_paths],
+        "poses" : template_poses
+    }
+
+    postive_pairs = extract_positive_pairs_xyz(all_pos_proposals, templates)    
+    negative_pairs = extract_negative_pairs_3(all_neg_proposals, templates)
+
+    train_postive_pairs, remaining_postive_pairs = train_test_split(postive_pairs, test_size=0.2, random_state=0)
+    val_postive_pairs, test_postive_pairs = train_test_split(remaining_postive_pairs, test_size=0.5, random_state=0)
+
+    train_negative_pairs, remaining_negative_pairs = train_test_split(negative_pairs, test_size=0.2, random_state=0)
+    val_negative_pairs, test_negative_pairs = train_test_split(remaining_negative_pairs, test_size=0.5, random_state=0)
+
+    train_dataset = PairedDataset(train_postive_pairs + train_negative_pairs, transform=train_transform)
+    val_dataset = PairedDataset(val_postive_pairs + val_negative_pairs, transform=None) # No transform for val set
+    test_dataset = PairedDataset(test_postive_pairs + test_negative_pairs, transform=None)
+
+    return train_dataset, val_dataset, test_dataset, train_negative_pairs, train_postive_pairs
+
 # def train(device, model, train_dataset, val_dataset, test_dataset, num_epochs):
 
 #     wandb_run = wandb.init(project="cnos_contrastive_learning")
@@ -733,7 +942,7 @@ def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_
 #         })
 
 
-def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
+def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs, dataset):
 
     wandb_run = wandb.init(project="cnos_contrastive_learning")
     model = model.to(device)
@@ -763,7 +972,7 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
             del img1, img2, labels, batch
         log.info(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss/len(train_loader):.5f}")
         if epoch %5 == 0:
-            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/hudiebanji_augmented_more angles/model_checkpoint'+str(epoch)+'.pth')
+            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/{dataset}_model_checkpoint'+str(epoch)+'.pth')
 
         if epoch %3 == 0:
             # Validation
@@ -785,7 +994,7 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs):
                 best_model_state = model.state_dict()
                 print("best_val_loss: ", best_val_loss/len(val_loader))
                 print("saving best model at epoch: ", epoch)
-                torch.save(best_model_state, 'contrastive_learning/saved_checkpoints/hudiebanji_augmented_more angles/best_model_checkpoint.pth')
+                torch.save(best_model_state, f'contrastive_learning/saved_checkpoints/{dataset}_best_model_checkpoint.pth')
 
         wandb_run.log({
             'train/epoch': epoch + 1,

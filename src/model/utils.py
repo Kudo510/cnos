@@ -89,7 +89,7 @@ class Detections:
             setattr(self, key, value) # So now we have self.boxes and self.masks = ... for the class
         self.keys = list(data.keys())
         if "boxes" in self.keys:
-            if isinstance(self.boxes, np.ndarray): # convert numpy to torch
+            if isinstance(self.boxes, np.ndarray): # convert numpys to torch
                 self.to_torch()
             self.boxes = self.boxes.long()
 
@@ -123,12 +123,38 @@ class Detections:
         for key in self.keys:
             setattr(self, key, getattr(self, key)[keep_idxs])
 
-    def apply_nms(self, nms_thresh=0.5):
+    def apply_nms(self, nms_thresh=0.5):       
         keep_idx = torchvision.ops.nms(
             self.boxes.float(), self.scores.float(), nms_thresh
         )
         for key in self.keys:
             setattr(self, key, getattr(self, key)[keep_idx])
+
+
+    def is_box_inside(self, box1, box2):
+        """Check if box1 is completely inside box2."""
+        return (box2[0] <= box1[0] and box2[1] <= box1[1] and
+                box2[2] >= box1[2] and box2[3] >= box1[3])
+
+    def filter_contained_boxes(self):
+        """Filter out boxes that are completely inside other boxes."""
+        n = self.boxes.shape[0]
+        keep = torch.ones(n, dtype=torch.bool)
+        
+        for i in range(n):
+            if keep[i]:
+                for j in range(n):
+                    if i != j and keep[j]:
+                        if self.is_box_inside(self.boxes[i], self.boxes[j]):
+                            keep[i] = False
+                            break
+        
+        for key in self.keys:
+            setattr(self, key, getattr(self, key)[keep])
+            
+    # def apply_nms_contrastive_learning(self, nms_thresh=0.5):
+    #     self.filter_contained_boxes()
+    #     self.apply_nms(nms_thresh)
 
     def add_attribute(self, key, value):
         setattr(self, key, value)

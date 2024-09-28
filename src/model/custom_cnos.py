@@ -706,11 +706,14 @@ def custom_detections_2(sam_detections, idx_selected_proposals, file_path, scene
     # keep only detections with score > conf_threshold
     detections.filter(idx_selected_proposals)
     
-    # detections.add_attribute("scores", pred_scores)
+    dummy_scores = torch.ones(len(detections)) # just put all scores = 1
+    detections.add_attribute("scores", dummy_scores.cuda())
     detections.add_attribute("object_ids", pred_idx_objects)
-    # detections.apply_nms_per_object_id(
-    #     nms_thresh=0.3
-    # )
+
+    detections.filter_contained_boxes()
+    detections.apply_nms_per_object_id(
+        nms_thresh=0.5
+    )
     detections.to_numpy()
 
     for ext in [".json", ".npz"]:
@@ -957,7 +960,7 @@ def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_dete
     if len(dets) > 0:
         final_result = custom_visualize_2(dataset, rgb_path, dets)
         # Save image
-        saved_path = f"contrastive_learning/output_images/{scene_id:06d}_{frame_id:06d}_{type}.png"
+        saved_path = f"contrastive_learning/output_images/{dataset}_{scene_id:06d}_{frame_id:06d}_{type}.png"
         final_result.save(saved_path)
     return 0
 
