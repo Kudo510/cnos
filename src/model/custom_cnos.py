@@ -406,13 +406,13 @@ def check_similarity_cosine(best_model_path, masked_images, templates, aggreatio
         
         # Average 5 times
         average_outputs_test = torch.sum(outputs_test, dim=0)/outputs_test.shape[0]
-        average_predicted = (average_outputs_test < 1).int() 
+        average_predicted = (average_outputs_test < 1.5).int() 
         # Max out of 5
         max_outputs_test, _ = torch.max(outputs_test, dim=0)
-        max_predicted = (max_outputs_test < 1).int() 
+        max_predicted = (max_outputs_test < 1.5).int() 
         # Min out of 5
         min_outputs_test, _ = torch.min(outputs_test, dim=0)
-        min_predicted = (min_outputs_test < 1).int() 
+        min_predicted = (min_outputs_test < 1.5).int() 
 
         # print(f"Prediction of index{i} is: {outputs_test} as {predicted}")
 
@@ -714,6 +714,8 @@ def custom_detections_2(sam_detections, idx_selected_proposals, file_path, scene
     detections.apply_nms_per_object_id(
         nms_thresh=0.5
     )
+
+    # detections.filter_cluttered_bboxes() # filter missclassified background 
     detections.to_numpy()
 
     for ext in [".json", ".npz"]:
@@ -942,7 +944,7 @@ def _extract_object_by_mask(image, mask, width: int = 512):
     return cropped_image
 
 
-def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, type = "contrastive"):
+def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, obj_id, type = "contrastive"):
     # Cnos final results
     file_path = f"contrastive_learning/output_npz/{scene_id:06d}_{frame_id:06d}_{type}"
     custom_detections_2(sam_detections, selected_proposals_indices, file_path=file_path, scene_id=scene_id, frame_id=frame_id)
@@ -960,7 +962,7 @@ def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_dete
     if len(dets) > 0:
         final_result = custom_visualize_2(dataset, rgb_path, dets)
         # Save image
-        saved_path = f"contrastive_learning/output_images/{dataset}_{scene_id:06d}_{frame_id:06d}_{type}.png"
+        saved_path = f"contrastive_learning/output_images/{dataset}_{scene_id:06d}_{frame_id:06d}_{type}_obj_{obj_id}.png"
         final_result.save(saved_path)
     return 0
 
@@ -1012,7 +1014,7 @@ def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_pat
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     average_indices, max_indices, min_indices, average_prob, max_prob, min_prob, _, _ = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
 
-    _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, type = "contrastive")
+    _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, obj_id= obj_id, type = "contrastive")
     return 0
 
 

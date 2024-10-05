@@ -382,18 +382,23 @@ def calculate_iou(ground_truth, prediction):
     return iou_score
 
 
-def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=500):
+def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=250, area_threshold=0.3):
     # Ensure masks are binary (0 or 1)
     mask1 = (mask1 > 0).astype(int)
     mask2 = (mask2 > 0).astype(int)
+
+    area1 = np.sum(mask1)
+    area2 = np.sum(mask2)
     
     # Check if mask1 is entirely inside mask2
     intersection = np.bitwise_and(mask1, mask2)
     difference = np.sum(mask1) - np.sum(intersection)
     
-    # Allow for some noise
-    # log.info(f"difference : {difference}")
-    return difference, difference <= noise_threshold
+    is_inside = difference <= noise_threshold
+
+    is_area_too_small = area1 < (area_threshold * area2)
+
+    return difference, is_inside, is_area_too_small
     # return difference <= noise_threshold
 
 
