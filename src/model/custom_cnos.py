@@ -944,9 +944,9 @@ def _extract_object_by_mask(image, mask, width: int = 512):
     return cropped_image
 
 
-def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, obj_id, type = "contrastive"):
+def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, obj_id, version, type = "contrastive"):
     # Cnos final results
-    file_path = f"contrastive_learning/output_npz/{scene_id:06d}_{frame_id:06d}_{type}"
+    file_path = f"contrastive_learning/output_npz/{dataset}_{scene_id:06d}_{frame_id:06d}_{type}_{version}"
     custom_detections_2(sam_detections, selected_proposals_indices, file_path=file_path, scene_id=scene_id, frame_id=frame_id)
     results = np.load(file_path+".npz")
     dets = []
@@ -962,7 +962,7 @@ def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_dete
     if len(dets) > 0:
         final_result = custom_visualize_2(dataset, rgb_path, dets)
         # Save image
-        saved_path = f"contrastive_learning/output_images/{dataset}_{scene_id:06d}_{frame_id:06d}_{type}_obj_{obj_id}.png"
+        saved_path = f"contrastive_learning/output_images/{dataset}_{scene_id:06d}_{frame_id:06d}_{type}_obj_{obj_id}_{version}.png"
         final_result.save(saved_path)
     return 0
 
@@ -978,7 +978,7 @@ def _tighten_bboxes(sam_detections, device="cuda"):
     sam_detections["masks"] = torch.stack(filtered_masks).to(device)
     return sam_detections
 
-def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_path, obj_id=1, dataset = "icbin", aggreation_num_templates=5): 
+def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_path, version, obj_id=1, dataset = "icbin", aggreation_num_templates=5): 
 
     rgb = Image.open(rgb_path).convert("RGB")
     sam_detections = custom_sam_model.generate_masks(np.array(rgb))
@@ -1014,7 +1014,7 @@ def full_pipeline(custom_sam_model, rgb_path, scene_id, frame_id, best_model_pat
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     average_indices, max_indices, min_indices, average_prob, max_prob, min_prob, _, _ = check_similarity_3(best_model_path=best_model_path, masked_images=masked_images, templates=syn_templates, aggreation_num_templates = aggreation_num_templates, device=device)
 
-    _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, obj_id= obj_id, type = "contrastive")
+    _save_final_results(selected_proposals_indices=average_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=selected_sam_detections, dataset=dataset, rgb_path=rgb_path, obj_id= obj_id, version=version, type = "contrastive")
     return 0
 
 

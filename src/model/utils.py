@@ -119,10 +119,16 @@ class Detections:
                 self.boxes[idx].float(), self.scores[idx].float(), nms_thresh
             )
             keep_idxs.cat(idx_object_id[keep_idx])
-        keep_idxs = keep_idxs.data.cpu()
-        
-        for key in self.keys:
-            setattr(self, key, getattr(self, key)[keep_idxs])
+            # breakpoint()
+        if len(keep_idxs.data) == 0:
+            keep_idxs = keep_idxs.data
+            for key in self.keys:
+                setattr(self, key, getattr(self, key)[keep_idxs])
+        else:
+            keep_idxs = keep_idxs.data.cpu()
+            
+            for key in self.keys:
+                setattr(self, key, getattr(self, key)[keep_idxs])
 
     def apply_nms(self, nms_thresh=0.5):       
         keep_idx = torchvision.ops.nms(

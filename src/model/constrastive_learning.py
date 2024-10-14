@@ -373,6 +373,7 @@ def extract_dataset_train_pbr_icbin_obj2(dataset="icbin",data_type="train_pbr", 
                     pos_proposal = {
                         "idx" : i,
                         "rgb": np.array(masks_pred["rgb"][i])/255.0,
+                        # "rgb": np.array(masks_pred["rgb"][i]),
                         "pose": selected_obj["pose"]
                     }
                     pos_proposals.append(pos_proposal)
@@ -412,6 +413,7 @@ def extract_dataset_train_pbr_icbin_obj2(dataset="icbin",data_type="train_pbr", 
     
         all_pos_proposals.append(final_pos_proposals)
         all_neg_proposals.append([np.array(masked_images[j])/255.0 for j in range(len(masked_images)) if j not in (pred_is_inside_indices + too_small_indices+obj_1_pred_is_inside_indices)])
+        # all_neg_proposals.append([np.array(masked_images[j]) for j in range(len(masked_images)) if j not in (pred_is_inside_indices + too_small_indices+obj_1_pred_is_inside_indices)])
         log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(final_pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
 
     return all_pos_proposals, all_neg_proposals, best_mask_indices
@@ -757,14 +759,18 @@ def extract_dataset_test(dataset="icbin",data_type="test", scene_id=2):  # data_
 
 # Custom dataset for paired images
 class PairedDataset():
-    def __init__(self, dataset, transform):
+    def __init__(self, dataset, transform, train_transform = True):
         self.dataset = dataset
         self.transform = transform
+        self.train_transform = train_transform
 
     def __getitem__(self, index):
-        if self.transform:
+        if self.transform and self.train_transform:
             img1 = self.transform(self.dataset[index]["img1"]).permute(1,2,0)
             img2 = self.transform(self.dataset[index]["img2"]).permute(1,2,0)
+        elif self.transform and not self.train_transform:
+            img1 = self.transform(self.dataset[index]["img1"])
+            img2 = self.transform(self.dataset[index]["img2"])
         else:
             img1 = self.dataset[index]["img1"]
             img2 = self.dataset[index]["img2"]
@@ -809,6 +815,7 @@ class ContrastiveLearningModel(nn.Module):
         super().__init__()  # Initialize the nn.Module superclass
         self.device = device
         dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14_reg')
+        log.info(f"model used is dinov2_vitl14_reg with more aumneation method")
         dinov2_vitl14.patch_size = 14
         if torch.cuda.is_available():
             dinov2_vitl14 = torch.nn.DataParallel(dinov2_vitl14).to(self.device)
@@ -820,6 +827,44 @@ class ContrastiveLearningModel(nn.Module):
 
     def forward_one(self, x):
         x = self.dinov2_vitl14(x)
+        # log.info(f"Shape after dinov2 classfication: {x.shape}")
+        return x
+    
+    def forward(self, input1, input2):
+        output1 = self.forward_one(input1)
+        output2 = self.forward_one(input2)
+        return output1, output2
+
+class ContrastiveLearningModel_2(nn.Module):
+    '''
+    Obtain 30*30*1024 from dinov2 then convert to 1024
+    '''
+    def __init__(self, device):
+        super().__init__()
+        self.device = device
+        dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14_reg')
+        dinov2_vitl14.patch_size = 14
+        if torch.cuda.is_available():
+            dinov2_vitl14 = torch.nn.DataParallel(dinov2_vitl14).to(self.device)
+        self.dinov2_vitl14 = dinov2_vitl14
+
+        self.conv1 = nn.Conv1d(900, 450, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv1d(450, 1, kernel_size=3, padding=1)
+        self.relu = nn.ReLU()
+        self.pool = nn.MaxPool1d(2)
+
+    def forward_one(self, x):
+        layers_list = list(range(24))
+        batch_size = x.shape[0]
+        x = self.dinov2_vitl14.module.get_intermediate_layers(
+                x, n=layers_list, return_class_token=True
+                )[23][0]# .reshape(-1,900,1024)
+        print(x.shape)
+        # x = x.view(batch_size, 900, 1024)
+        x = self.relu(self.conv1(x))
+        x = self.pool(x)
+        x = self.conv2(x)
+        x = x.squeeze(1)
         return x
     
     def forward(self, input1, input2):
@@ -890,6 +935,7 @@ class GaussianBlur(object):
             sample = cv2.GaussianBlur(sample, (self.kernel_size, self.kernel_size), sigma)
 
         return sample
+    
 
 def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_neg_proposals):
 
@@ -919,12 +965,43 @@ def prepare_dataset(template_paths, template_poses_path, all_pos_proposals, all_
     )
 
     input_height = 224 # shape of input image
-    data_transforms = [
+    data_transforms  = [
+        # transforms.RandomPerspective(distortion_scale=0.6, p=0.5),
+        # transforms.RandomAutocontrast(p=0.5),
+        # transforms.RandomEqualize(p=0.5),
+        # transforms.RandomInvert(p=0.3),
+        # transforms.RandomAdjustSharpness(sharpness_factor=2, p=0.5),
+        # transforms.RandomSolarize(threshold=128, p=0.5),
+        # transforms.RandomPosterize(bits=2, p=0.3),
+        # transforms.Lambda(lambda x: x / 255.0),  # Division by 255.0
+        # transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         transforms.RandomApply([color_jitter], p=0.8),
         GaussianBlur(kernel_size=int(0.1 * input_height)-1, p=0.5), # kernelsize must be odd number
-        transforms.ToTensor()
+        transforms.ToTensor(),
     ]
+
+    # tensor_transforms = transforms.Compose([
+    #     NumpyToTensor(),
+    #     transforms.RandomGrayscale(p=0.2),
+    #     transforms.RandomPerspective(distortion_scale=0.6, p=0.5),
+    #     transforms.RandomAutocontrast(p=0.5),
+    #     transforms.RandomEqualize(p=0.5),
+    #     transforms.RandomInvert(p=0.3),
+    #     transforms.RandomAdjustSharpness(sharpness_factor=2, p=0.5),
+    #     transforms.RandomSolarize(threshold=128, p=0.5),
+    #     transforms.RandomPosterize(bits=2, p=0.3),
+    # ])
+
+    # train_transform = transforms.Compose([
+    #     numpy_transforms,
+    #     tensor_transforms
+    # ])
+
     train_transform = transforms.Compose(data_transforms)
+
+    # val_transform = transforms.Compose([
+    #     transforms.Lambda(lambda x: x / 255.0),
+    #     transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))])
 
     template_paths = sorted(glob.glob(template_paths))
     # For train_pbr templates

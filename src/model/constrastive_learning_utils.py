@@ -151,8 +151,10 @@ def extract_positive_pairs(all_pos_proposals, templates):
             if d ==0 or x == 0 or y ==0:
                 continue
             pos_pair = {
-                "img1" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224)), 
+                "img1" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"]/255.0, (2,0,1)), target_max=224)), 
                 "img2" : transform(resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224)), # resize and pad images
+                # "img1" : resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224), 
+                # "img2" : resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224), # resize and pad images
                 "label" : 1
             }
             log.info(f"pos_pair['img1'].shape[-1], pos_pair['img2'].shape[-1]: {pos_pair['img1'].shape[-1]}, {pos_pair['img2'].shape[-1]}" )
@@ -291,8 +293,10 @@ def extract_negative_pairs_3(all_neg_proposals, templates):
             continue
 
         neg_pair = {
-            "img1" : transform(resize_and_pad_image(np.transpose(neg_prop, (2,0,1)), target_max=224)), 
+            "img1" : transform(resize_and_pad_image(np.transpose(neg_prop/255.0, (2,0,1)), target_max=224)), 
             "img2" : transform(resize_and_pad_image(np.transpose(selected_temp, (2,0,1)), target_max=224)),
+            # "img1" : resize_and_pad_image(np.transpose(neg_prop, (2,0,1)), target_max=224), 
+            # "img2" : resize_and_pad_image(np.transpose(selected_temp, (2,0,1)), target_max=224),
             "label" : 0
         }
 
@@ -382,7 +386,7 @@ def calculate_iou(ground_truth, prediction):
     return iou_score
 
 
-def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=250, area_threshold=0.3):
+def _is_mask1_inside_mask2(mask1, mask2, noise_threshold=250, area_threshold=0.5):
     # Ensure masks are binary (0 or 1)
     mask1 = (mask1 > 0).astype(int)
     mask2 = (mask2 > 0).astype(int)

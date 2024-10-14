@@ -74,7 +74,7 @@ Download BlenderProc4BOP set - 10* This is only required when you want to use re
         python -m src.scripts.download_train_pbr
 
 Testing on BOP dataset- 
-    export DATASET_NAME=itodd # icbin 
+    export DATASET_NAME=icbin # icbin 
     FAST_SAM and pbr
         python run_inference.py dataset_name=$DATASET_NAME model=cnos_fast
 
@@ -83,8 +83,8 @@ Testing on BOP dataset-
         # dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender
 
     with SAM + PBR # remmber use the original bop_pbr.py
-        python run_inference.py dataset_name=hudiebanjin
- 
+        python run_inference.py dataset_name=icbin
+
 Visulizing the results
     export DATASET_NAME=itodd 
     export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_itodd.json
@@ -127,6 +127,8 @@ Testing on custom image
         export DATASET_NAME=hudiebanjin # icbin 
         HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=hudiebanjin model.onboarding_config.rendering_type=pyrender 
             HYDRA_FULL_ERROR=1  to show full error with for hydra
+
+        python run_inference.py dataset_name=$DATASET_NAME
     to visualize
             export DATASET_NAME=hudiebanjin 
             export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_hudiebanjin.json

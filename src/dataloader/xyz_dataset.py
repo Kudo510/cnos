@@ -66,7 +66,7 @@ class XYZ():
         with open(os.path.join(img_folder, "scene_gt_info.json"), 'w') as f:
             json.dump(scene_gt_info, f, indent=2)
 
-    def project_3d_model(self, model, K, R, t, depth_map, image_shape=(1544, 2064), use_depth=True):
+    def project_3d_model(self, model, K, R, t, depth_map, image_shape=(1080, 1440), use_depth=True):
         vertices = np.asarray(model.vertices)
         homogeneous_vertices = np.hstack((vertices, np.ones((vertices.shape[0], 1))))
         camera_points = np.dot(homogeneous_vertices, np.vstack((np.hstack((R, t)), [0, 0, 0, 1])).T)

@@ -197,3 +197,4 @@ cnos_foundpose_analysis/
 contrastive_learning/
 cnos_analysis/output_npz
 xoa_out_dir/
+evaluations/output_masks/
