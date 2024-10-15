@@ -118,6 +118,26 @@ def _augment_pos_pairs(pos_pairs):
     
     return augmented_pos_pairs
 
+def _augment_dataset(dataset):
+    augmented_dataset = []
+    rotation_angles = [45, 90, 135, 180, 225] # [45, 90, 135] # 
+    
+    for data in dataset:
+        # Add the original pair
+        augmented_dataset.append(data)
+        
+        # Add rotated versions
+        for angle in rotation_angles:
+            rotated_data = {
+                "pos": transforms.functional.rotate(data["pos"], angle),
+                "anchor": data["anchor"],
+                "neg": data["neg"],
+                "label": 1
+            }
+            augmented_dataset.append(rotated_data)
+    
+    return augmented_dataset
+
 def extract_positive_pairs(all_pos_proposals, templates):
     
     transform = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
@@ -151,7 +171,7 @@ def extract_positive_pairs(all_pos_proposals, templates):
             if d ==0 or x == 0 or y ==0:
                 continue
             pos_pair = {
-                "img1" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"]/255.0, (2,0,1)), target_max=224)), 
+                "img1" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224)), 
                 "img2" : transform(resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224)), # resize and pad images
                 # "img1" : resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224), 
                 # "img2" : resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224), # resize and pad images
@@ -165,6 +185,52 @@ def extract_positive_pairs(all_pos_proposals, templates):
     augmented_pos_pairs = _augment_pos_pairs(pos_pairs)
     return augmented_pos_pairs
 
+
+def extract_dataset_info_nce(all_pos_proposals, all_neg_proposals, templates):
+    
+    transform = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+    selected_neg_proposals = random.sample(all_neg_proposals, len(all_pos_proposals))
+
+    dataset = list()
+    for proposals_id in trange(len(all_pos_proposals)):
+        if all_pos_proposals[proposals_id]["pose"] is not None:
+            obj_query_pose = all_pos_proposals[proposals_id]["pose"][None]
+            obj_template_poses = templates["poses"]
+
+            return_inplane = True
+
+            obj_query_openGL_pose = opencv2opengl(obj_query_pose)
+            obj_query_openGL_location = obj_query_openGL_pose[:, 2, :3]  # Mx3 # (translation components) -  It assumes that the 3D location is found in the third column of the pose matrices.
+            obj_template_openGL_poses = opencv2opengl(obj_template_poses)
+            obj_template_openGL_locations = obj_template_openGL_poses[:, 2, :3]  # Nx3 # (translation components)
+
+            # find the nearest template
+            # It computes the pairwise distances between each query pose location and each template pose location using cdist.
+            distances = cdist(obj_query_openGL_location, obj_template_openGL_locations)
+            best_index_in_pose_distribution = np.argmin(distances, axis=-1)  # M
+            if return_inplane:
+                nearest_poses = obj_template_poses[best_index_in_pose_distribution]
+                inplanes = np.zeros(len(obj_query_pose))
+                for idx in range(len(obj_query_pose)):
+                    rot_query_openCV = obj_query_pose[idx, :3, :3]
+                    rot_template_openCV = nearest_poses[idx, :3, :3]
+                    inplanes[idx] = compute_inplane(rot_query_openCV, rot_template_openCV)
+            d, x, y = np.transpose(all_pos_proposals[proposals_id]['rgb'], (2,0,1)).shape
+            log.info(f"Size of pos proposal: {d,x,y}")
+            if d ==0 or x == 0 or y ==0:
+                continue
+            data = {
+                "pos" : transform(resize_and_pad_image(np.transpose(all_pos_proposals[proposals_id]["rgb"], (2,0,1)), target_max=224)), 
+                "anchor" : transform(resize_and_pad_image(np.transpose(templates["rgb"][best_index_in_pose_distribution[0]], (2,0,1)), target_max=224)), # resize and pad images
+                "neg" : transform(resize_and_pad_image(np.transpose(selected_neg_proposals[proposals_id], (2,0,1)), target_max=224)), 
+            }
+            # log.info(f"pos_pair['img1'].shape[-1], pos_pair['img2'].shape[-1]: {pos_pair['img1'].shape[-1]}, {pos_pair['img2'].shape[-1]}" )
+            # if pos_pair["img1"].shape[-1] != pos_pair["img2"].shape[-1]:
+            #     continue
+            dataset.append(data)
+
+    augmented_dataset= _augment_dataset(dataset)
+    return augmented_dataset
 
 
 def extract_positive_pairs_xyz(all_pos_proposals, templates):
@@ -293,7 +359,7 @@ def extract_negative_pairs_3(all_neg_proposals, templates):
             continue
 
         neg_pair = {
-            "img1" : transform(resize_and_pad_image(np.transpose(neg_prop/255.0, (2,0,1)), target_max=224)), 
+            "img1" : transform(resize_and_pad_image(np.transpose(neg_prop, (2,0,1)), target_max=224)), 
             "img2" : transform(resize_and_pad_image(np.transpose(selected_temp, (2,0,1)), target_max=224)),
             # "img1" : resize_and_pad_image(np.transpose(neg_prop, (2,0,1)), target_max=224), 
             # "img2" : resize_and_pad_image(np.transpose(selected_temp, (2,0,1)), target_max=224),
