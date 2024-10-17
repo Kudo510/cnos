@@ -1,0 +1,11 @@
+  _target_: src.model.dinov2.CustomDINOv2
+  model_name: dinov2_vitl14_reg
+  model: 
+    _target_: src.model.contrastive_learning_info_nce.ContrastiveLearningModelInfoNCE
+    # repo_or_dir: facebookresearch/dinov2
+    # model: ${model.descriptor_model.model_name}
+    device: "cuda"
+  token_name: x_norm_clstoken
+  descriptor_width_size: ${model.descriptor_width_size}
+  image_size: 224
+  chunk_size: 16

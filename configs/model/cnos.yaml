@@ -19,8 +19,8 @@ matching_config:
     _target_: src.model.loss.PairwiseSimilarity
     metric: cosine
     chunk_size: 16
-  aggregation_function: avg_5
-  confidence_thresh: 0.5
+  aggregation_function: avg_5 # median # mean #avg_5
+  confidence_thresh: 0.01
 
 onboarding_config:
   rendering_type: pbr

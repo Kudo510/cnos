@@ -61,8 +61,8 @@ def render(cfg: DictConfig) -> None:
     for dataset_name in [
         # "tless",
         # "tudl",
-        # "icbin",
-        "itodd",
+        "icbin",
+        # "itodd",
         # "hb",
         # "ycbv",
         # "lmo",

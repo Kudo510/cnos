@@ -65,7 +65,7 @@
 Download all dataset
     python -m src.scripts.download_bop23
 Render templates with pyrender for all dataset
-    python -m src.scripts.render_template_with_pyrender level=2 # 0 is for 42 templates, 3 for 2562 templates
+    python -m src.scripts.render_template_with_pyrender level=0 # 0 is for 42 templates, 3 for 2562 templates
 download model weights of SAM and Fast SAM
     python -m src.scripts.download_sam
     python -m src.scripts.download_fastsam
@@ -83,7 +83,7 @@ Testing on BOP dataset-
         # dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender
 
     with SAM + PBR # remmber use the original bop_pbr.py
-        python run_inference.py dataset_name=icbin
+        HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=icbin
 
 Visulizing the results
     export DATASET_NAME=itodd 
