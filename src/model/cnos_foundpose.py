@@ -26,12 +26,12 @@ from src.model.foundpose import (
     templates_feature_extraction_3
 )
 
-from src.model.custom_cnos import custom_detections, custom_visualize, custom_detections_2, custom_visualize_2
+from src.model.custom_cnos import custom_detections, custom_visualize, custom_detections_2, custom_visualize_2, custom_detections_cnos_foundpose
 
-def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, type = "cnos"):
+def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_detections, dataset, rgb_path, type, confidence_scores):
     # Cnos final results
-    file_path = f"cnos_foundpose_analysis/output_npz/{scene_id:06d}_{frame_id:06d}_{type}"
-    custom_detections_2(sam_detections, selected_proposals_indices, file_path=file_path, scene_id=scene_id, frame_id=frame_id)
+    file_path = f"cnos_foundpose_analysis/{dataset}/output_npz/{scene_id:06d}_{frame_id:06d}_{type}"
+    custom_detections_cnos_foundpose(sam_detections, selected_proposals_indices, file_path=file_path, scene_id=scene_id, frame_id=frame_id, confidence_scores= confidence_scores)
     results = np.load(file_path+".npz")
     dets = []
     for i in range(results["segmentation"].shape[0]):
@@ -46,7 +46,7 @@ def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_dete
     if len(dets) > 0:
         final_result = custom_visualize_2(dataset, rgb_path, dets)
         # Save image
-        saved_path = f"cnos_foundpose_analysis/output_images_different_thresholds/{scene_id:06d}_{frame_id:06d}_{type}.png"
+        saved_path = f"cnos_foundpose_analysis/{dataset}/output_images_different_thresholds/{scene_id:06d}_{frame_id:06d}_{type}.png"
         final_result.save(saved_path)
     return 0
 
@@ -119,7 +119,7 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
     syn_data_type = "train_pbr" # test
     out_folder = f"foundpose_analysis/{dataset}/templates"
 
-    syn_template_path_1 = f"{out_folder}/{syn_data_type}_images_templates/obj_{obj_id:06d}_original" 
+    syn_template_path_1 = f"{out_folder}/{syn_data_type}/obj_{obj_id:06d}_original" 
     syn_template_files_1 = sorted(glob.glob(os.path.join(syn_template_path_1, "*.png")), key=os.path.getmtime)
     syn_template_files = syn_template_files_1 
     syn_num_templates = len(syn_template_files)
@@ -171,24 +171,32 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
         "foundpose_top_5_scores" : foundpose_top_5_scores
     }
 
-    with open(f'cnos_foundpose_analysis/score_dicts/score_dict_{scene_id:06d}_{frame_id:06d}.pkl', 'wb') as file:
+    with open(f'cnos_foundpose_analysis/{dataset}/score_dicts/score_dict_{scene_id:06d}_{frame_id:06d}_.pkl', 'wb') as file:
         pickle.dump(score_dict, file)
 
     combined_avg_scores = [(cnos_avg_scores[i] + foundpose_average_scores[i])/2 for i in range(len(foundpose_average_scores))]
 
-    selected_proposals_indices = [i for i, a_s in enumerate(combined_avg_scores) if a_s >0.35]
-    selected_proposals_scores = [a_s for i, a_s in enumerate(combined_avg_scores) if a_s >0.35]
-    cnos_selected_proposals_indices = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.5]
-    cnos_selected_proposals_scores = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.5]
-    foundpose_selected_proposals_indices = [i for i, a_s in enumerate(foundpose_average_scores) if a_s >0.2]
-    foundpose_selected_proposals_scores = [a_s for i, a_s in enumerate(foundpose_average_scores) if a_s >0.2]
+    # selected_proposals_indices = [i for i, a_s in enumerate(combined_avg_scores) if a_s >0.35]
+    # selected_proposals_scores = [a_s for i, a_s in enumerate(combined_avg_scores) if a_s >0.35]
+    # cnos_selected_proposals_indices = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.5]
+    # cnos_selected_proposals_scores = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.5]
+    # foundpose_selected_proposals_indices = [i for i, a_s in enumerate(foundpose_average_scores) if a_s >0.2]
+    # foundpose_selected_proposals_scores = [a_s for i, a_s in enumerate(foundpose_average_scores) if a_s >0.2]
+
+
+    selected_proposals_indices = [i for i, a_s in enumerate(combined_avg_scores) if a_s >0.01]
+    selected_proposals_scores = [a_s for i, a_s in enumerate(combined_avg_scores) if a_s >0.01]
+    cnos_selected_proposals_indices = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.01]
+    cnos_selected_proposals_scores = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.01]
+    foundpose_selected_proposals_indices = [i for i, a_s in enumerate(foundpose_average_scores) if a_s >0.01]
+    foundpose_selected_proposals_scores = [a_s for i, a_s in enumerate(foundpose_average_scores) if a_s >0.01]
 
     # Cnos
-    _save_final_results(selected_proposals_indices=cnos_selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos")
+    _save_final_results(selected_proposals_indices=cnos_selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos", confidence_scores = cnos_selected_proposals_scores )
     # Foundpose
-    _save_final_results(selected_proposals_indices=foundpose_selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "foundpose")
+    _save_final_results(selected_proposals_indices=foundpose_selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "foundpose", confidence_scores =foundpose_selected_proposals_scores )
     # Cnos_foundpose
-    _save_final_results(selected_proposals_indices=selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos_foundpose")
+    _save_final_results(selected_proposals_indices=selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos_foundpose", confidence_scores = selected_proposals_scores)
 
     return 0
     # final_result

@@ -37,7 +37,7 @@ from torchvision.ops.boxes import batched_nms, box_area
 from segment_anything.modeling.sam import Sam
 from segment_anything.utils.amg import rle_to_mask
 
-from src.model.constrastive_learning import ContrastiveLearningModel
+from src.model.contrastive_learning import ContrastiveLearningModel
 from src.model.constrastive_learning_utils import resize_and_pad_image
 from src.model.loss import PairwiseSimilarity, Similarity
 from src.model.sam import CustomSamAutomaticMaskGenerator, load_sam
@@ -708,6 +708,96 @@ def custom_detections_2(sam_detections, idx_selected_proposals, file_path, scene
     
     dummy_scores = torch.ones(len(detections)) # just put all scores = 1
     detections.add_attribute("scores", dummy_scores.cuda())
+    detections.add_attribute("object_ids", pred_idx_objects)
+
+    detections.filter_contained_boxes()
+    detections.apply_nms_per_object_id(
+        nms_thresh=0.5
+    )
+
+    # detections.filter_cluttered_bboxes() # filter missclassified background 
+    detections.to_numpy()
+
+    for ext in [".json", ".npz"]:
+        file = file_path + ext
+        if os.path.exists(file):
+            os.remove(file)
+            print(f"File {file} has been deleted.")
+        else:
+            print(f"File {file} does not exist.")
+
+    # save detections to file
+    results = detections.save_to_file_2(
+        scene_id=int(scene_id),
+        frame_id=int(frame_id),
+        runtime=1,
+        file_path=file_path,
+        dataset_name="icbin",
+        return_results=True,
+    )
+
+    num_workers = 10
+    result_paths = [file_path+".npz"]
+    pool = multiprocessing.Pool(processes=num_workers)
+    convert_npz_to_json_with_idx = partial(
+        convert_npz_to_json,
+        list_npz_paths=result_paths,
+    )
+    # detections = list(
+    #     tqdm(
+    #         pool.imap_unordered(
+    #             convert_npz_to_json_with_idx, range(len(result_paths))
+    #         ),
+    #         total=len(result_paths),
+    #         desc="Converting npz to json",
+    #     )
+    # )
+    # formatted_detections = []
+    # for detection in tqdm(detections, desc="Loading results ..."):
+    #     formatted_detections.extend(detection)
+
+    # detections_path = f"{file_path}.json"
+    # save_json_bop23(detections_path, formatted_detections)
+    # print(f"Saved predictions to {detections_path}")
+
+
+def custom_detections_cnos_foundpose(sam_detections, idx_selected_proposals, file_path, scene_id, frame_id, confidence_scores):
+    '''
+    For cnos_foundpose
+    '''
+
+    # rgb = Image.open(rgb_path).convert("RGB")
+    detections = Detections(sam_detections)
+    mask_post_processing = SimpleNamespace(
+        min_box_size=0.05,  # relative to image size
+        min_mask_size=3e-4  # relative to image size
+    )
+
+    # get scores per proposal
+    # cosine_metric = PairwiseSimilarity()
+    # scores = cosine_metric(proposals_features, real_ref_features.unsqueeze(dim=0))
+    # score_per_proposal_and_object = torch.topk(scores, k=5, dim=-1)[0]
+    # score_per_proposal_and_object = torch.mean(
+    #     score_per_proposal_and_object, dim=-1
+    # )
+    # assign each proposal to the object with highest scores
+    # score_per_proposal, assigned_idx_object = torch.max(
+    #     score_per_proposal_and_object, dim=-1
+    # )  # N_query
+
+    # idx_selected_proposals = torch.arange(
+    #     len(score_per_proposal), device=score_per_proposal.device
+    # )[score_per_proposal > 0.5]
+    # pred_idx_objects = assigned_idx_object[idx_selected_proposals]
+    # pred_scores = score_per_proposal[idx_selected_proposals]
+
+    
+    pred_idx_objects = torch.tensor([1]).repeat(len(idx_selected_proposals)) # temperary class 1 for object 1 only
+
+    # keep only detections with score > conf_threshold
+    detections.filter(idx_selected_proposals)
+
+    detections.add_attribute("scores", confidence_scores.cuda())
     detections.add_attribute("object_ids", pred_idx_objects)
 
     detections.filter_contained_boxes()

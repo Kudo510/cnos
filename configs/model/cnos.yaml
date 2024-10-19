@@ -20,7 +20,7 @@ matching_config:
     metric: cosine
     chunk_size: 16
   aggregation_function: avg_5 # median # mean #avg_5
-  confidence_thresh: 0.01
+  confidence_thresh: 0.01 # 0.01
 
 onboarding_config:
   rendering_type: pbr

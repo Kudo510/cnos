@@ -256,7 +256,7 @@ class Detections:
         self, scene_id, frame_id, runtime, file_path, dataset_name, return_results=False
     ):
         """
-        scene_id, image_id, category_id, bbox, time
+        scene_id, image_id, category_id, bbox, score
         """
         boxes = xyxy_to_xywh(self.boxes)
         results = {
@@ -265,7 +265,7 @@ class Detections:
             "category_id": self.object_ids
             if dataset_name != "lmo"
             else lmo_object_ids[self.object_ids],
-            # "score": self.scores,
+            "score": self.scores,
             "bbox": boxes,
             # "time": runtime,
             "segmentation": self.masks,

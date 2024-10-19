@@ -790,7 +790,7 @@ class ContrastiveLearningModelInfoNCE(nn.Module):
         super().__init__()  # Initialize the nn.Module superclass
         self.device = device
         log.info(f"model used is dinov2_vitl14")
-        dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
+        dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14_reg')
         dinov2_vitl14.patch_size = 14
         if torch.cuda.is_available():
             dinov2_vitl14 = torch.nn.DataParallel(dinov2_vitl14).to(self.device)
@@ -1093,7 +1093,7 @@ def train_info_nce_loss(device, model, train_loader, val_loader, num_epochs, dat
             del pos, anchor, neg, batch
         log.info(f"Epoch {epoch + 1}/{num_epochs} loss: {train_loss/len(train_loader):.5f}")
         if epoch %5 == 0:
-            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/{dataset}_model_checkpoint'+str(epoch)+'.pth')
+            torch.save(model.state_dict(), f'contrastive_learning/saved_checkpoints/info_nce_{dataset}_model_checkpoint'+str(epoch)+'.pth')
 
         if epoch %3 == 0:
             # Validation
@@ -1115,7 +1115,7 @@ def train_info_nce_loss(device, model, train_loader, val_loader, num_epochs, dat
                 best_model_state = model.state_dict()
                 print("best_val_loss: ", best_val_loss/len(val_loader))
                 print("saving best model at epoch: ", epoch)
-                torch.save(best_model_state, f'contrastive_learning/saved_checkpoints/{dataset}_best_model_checkpoint.pth')
+                torch.save(best_model_state, f'contrastive_learning/saved_checkpoints/info_nce_{dataset}_best_model_checkpoint.pth')
 
         wandb_run.log({
             'train/epoch': epoch + 1,

@@ -469,7 +469,7 @@ def extract_dataset_train_pbr_xyz(dataset="icbin",data_type="test", scene_id=1, 
 
     all_pos_proposals = []
     all_neg_proposals = []
-    for frame_path in tqdm(frame_paths[0:3]): # only take 200 out of 1000 frames
+    for frame_path in tqdm(frame_paths[0:195]): # only take 200 out of 1000 frames
         rgb = Image.open(frame_path).convert("RGB") # rotate(180)
         detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
         keep_ids = _remove_very_small_detections(detections["masks"], detections["boxes"])
@@ -517,8 +517,8 @@ def extract_dataset_train_pbr_xyz(dataset="icbin",data_type="test", scene_id=1, 
 
                 if gt_diff <=1000: # or is_area_too_small:
                     gt_is_inside_indices.append(i)
-                print("gt_diff, pred_diff ", gt_diff, pred_diff)
-                print("gt_diff smaller than 0 is ", len(gt_is_inside_indices))
+                # print("gt_diff, pred_diff ", gt_diff, pred_diff)
+                # print("gt_diff smaller than 0 is ", len(gt_is_inside_indices))
                 
                 if pred_diff <= 2000:
                     if not is_area_too_small:
@@ -542,7 +542,7 @@ def extract_dataset_train_pbr_xyz(dataset="icbin",data_type="test", scene_id=1, 
         all_neg_proposals.append([np.array(masked_images[j])/255.0 for j in range(len(masked_images)) if j not in (pred_is_inside_indices+is_area_too_small_list+gt_is_inside_indices)])
         log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(final_pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
 
-    return all_pos_proposals, all_neg_proposals, best_mask_indices
+    return all_pos_proposals, all_neg_proposals
 
 
 def extract_dataset_train_pbr_2(dataset="icbin",data_type="test", scene_id=1):  # data_type test or train 
@@ -741,6 +741,44 @@ def extract_dataset_test(dataset="icbin",data_type="test", scene_id=2):  # data_
         log.info(f"Number of prediction masks: {len(masks_pred['masks'])}, positive proposals: {len(final_pos_proposals)}, negative proposals: {len(all_neg_proposals[-1])}")
 
     return all_pos_proposals, all_neg_proposals, best_mask_indices
+
+
+def extract_negative_dataset(dataset="background_pbr_rendered",data_type="train_pbr", scene_id=0):  
+    '''
+    use sam to extract all prposasl fro synthetic scenes without any objects- so all of the crops will be negative ones
+    
+    '''
+    model_type = "vit_h"
+    checkpoint_dir =  "datasets/bop23_challenge/pretrained/segment-anything"
+    log.info("loading sam")
+    sam_model = load_sam(model_type, checkpoint_dir)
+    custom_sam_model = CustomSamAutomaticMaskGenerator(sam=sam_model)
+    custom_sam_model.predictor.model.to("cuda")
+
+    frame_paths = f"datasets/bop23_challenge/datasets/{dataset}/{data_type}/{scene_id:06d}/rgb/*.jpg" #"datasets/bop23_challenge/datasets/icbin/test/000001/rgb/000008.png"
+    frame_paths = sorted(glob.glob(frame_paths)) # only 50 not 55 paths - some ids are missing s.t 10
+
+    all_neg_proposals = []
+    for frame_path in tqdm(frame_paths): # only take 200 out of 1000 frames
+        rgb = Image.open(frame_path).convert("RGB") # rotate(180)
+        detections = custom_sam_model.generate_masks(np.array(rgb)) # Include masks and bboxes
+        keep_ids = _remove_very_small_detections(detections["masks"], detections["boxes"])
+        if keep_ids is not None:
+            if isinstance(keep_ids, list):
+                print(keep_ids)
+                selected_masks = [detections["masks"][i].cpu() for i in keep_ids]
+                log.info(f"Keeping only {len(selected_masks)} from {detections['masks'].shape[0]} masks")
+                masked_images = []
+                for mask in selected_masks:
+                    binary_mask = np.array(mask) * 255
+                    binary_mask = binary_mask.astype(np.uint8)
+                    masked_image = extract_object_by_mask(rgb, binary_mask)
+                    masked_images.append(masked_image)
+
+                all_neg_proposals.append([np.array(mask_image[0])/255.0 for mask_image in masked_images])
+                log.info(f"Number of prediction masks: {len(detections['masks'])}, negative proposals: {len(all_neg_proposals[-1])}")
+
+    return all_neg_proposals
 
 
 # Custom dataset for paired images

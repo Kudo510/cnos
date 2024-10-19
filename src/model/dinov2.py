@@ -32,7 +32,7 @@ class CustomDINOv2(pl.LightningModule):
         super().__init__()
         self.model_name = model_name
         self.model = model
-        self.model.load_state_dict(torch.load("contrastive_learning/saved_checkpoints/icbin_cosine_loss_best_model_checkpoint.pth"))
+        self.model.load_state_dict(torch.load("contrastive_learning/saved_checkpoints/icbin_model_checkpoint5_dino_large_registered.pth"))
         self.token_name = token_name
         self.chunk_size = chunk_size
         self.patch_size = patch_size

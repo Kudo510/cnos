@@ -196,7 +196,8 @@ class CNOS(pl.LightningModule):
 
         # update detections
         detections.filter(idx_selected_proposals)
-        detections.add_attribute("scores", pred_scores)
+        # detections.add_attribute("scores", pred_scores)
+        detections.add_attribute("scores",(pred_scores+1)/2)
         detections.add_attribute("object_ids", pred_idx_objects)
         detections.apply_nms_per_object_id(
             nms_thresh=self.post_processing_config.nms_thresh
