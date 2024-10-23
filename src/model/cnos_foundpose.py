@@ -10,7 +10,7 @@ from segment_anything.modeling.sam import Sam
 from PIL import Image
 import numpy as np
 import pickle
-from src.model.custom_cnos import cnos_templates_feature_extraction
+from src.model.custom_cnos import cnos_templates_feature_extraction, cnos_templates_feature_extraction_2
 from src.model.custom_cnos import cnos_crop_feature_extraction
 from src.model.custom_cnos import calculate_similarity as cnos_calculate_similarity
 from sklearn.decomposition import PCA
@@ -32,22 +32,23 @@ def _save_final_results(selected_proposals_indices, scene_id, frame_id, sam_dete
     # Cnos final results
     file_path = f"cnos_foundpose_analysis/{dataset}/output_npz/{scene_id:06d}_{frame_id:06d}_{type}"
     custom_detections_cnos_foundpose(sam_detections, selected_proposals_indices, file_path=file_path, scene_id=scene_id, frame_id=frame_id, confidence_scores= confidence_scores)
-    results = np.load(file_path+".npz")
-    dets = []
-    for i in range(results["segmentation"].shape[0]):
-        det = {
-        "scene_id": results["scene_id"],
-        "image_id": results["image_id"],
-        "category_id": results["category_id"][i],
-        "bbox": results["bbox"][i],
-        "segmentation": results["segmentation"][i],
-        }
-        dets.append(det)
-    if len(dets) > 0:
-        final_result = custom_visualize_2(dataset, rgb_path, dets)
-        # Save image
-        saved_path = f"cnos_foundpose_analysis/{dataset}/output_images_different_thresholds/{scene_id:06d}_{frame_id:06d}_{type}.png"
-        final_result.save(saved_path)
+    # print(f"load file {file_path}+.npz to save")
+    # results = np.load(file_path+".npz")
+    # dets = []
+    # for i in range(results["segmentation"].shape[0]):
+    #     det = {
+    #     "scene_id": results["scene_id"],
+    #     "image_id": results["image_id"],
+    #     "category_id": results["category_id"][i],
+    #     "bbox": results["bbox"][i],
+    #     "segmentation": results["segmentation"][i],
+    #     }
+    #     dets.append(det)
+    # if len(dets) > 0:
+    #     final_result = custom_visualize_2(dataset, rgb_path, dets)
+    #     # Save image
+    #     saved_path = f"cnos_foundpose_analysis/{dataset}/output_images_new/{scene_id:06d}_{frame_id:06d}_{type}.png"
+    #     final_result.save(saved_path)
     return 0
 
 
@@ -102,8 +103,37 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
     rgb = Image.open(rgb_path).convert("RGB")
     sam_detections = custom_sam_model.generate_masks(np.array(rgb))
 
+    print("Number of sam proposals before removing all small proposals", sam_detections["masks"].shape[0])
+
+    from torchvision.ops.boxes import batched_nms, box_area
+
+    def _remove_very_small_detections(masks, boxes): # after this step only valid boxes, masks are saved, other are filtered out
+        min_box_size = 0.05 # relative to image size 
+        min_mask_size = 3e-4 # 300/(640*480) # relative to image size assume the pixesl should be in range (300, 10000) need to remove them 
+        # max_mask_size = 10000/(640*480) 
+        img_area = masks.shape[1] * masks.shape[2]
+        box_areas = box_area(boxes) / img_area
+        # formatted_values = [f'{value.item():.6f}' for value in box_areas*img_area]
+        mask_areas = masks.sum(dim=(1, 2)) / img_area
+        # keep_idxs = torch.logical_and(
+        #     torch.logical_and(mask_areas > min_mask_size, mask_areas < max_mask_size),
+        #     box_areas > min_box_size**2
+        # )
+        keep_idxs = torch.logical_and(box_areas > min_box_size**2, mask_areas > min_mask_size)
+        return keep_idxs
+
+    keep_idxs = _remove_very_small_detections(sam_detections["masks"], sam_detections["boxes"]) 
+    selected_masks = [sam_detections["masks"][i] for i in range(len(keep_idxs)) if keep_idxs[i]]
+    selected_bboxes = [sam_detections["boxes"][i] for i in range(len(keep_idxs)) if keep_idxs[i]]
+
+    selected_sam_detections = {
+        "masks" : torch.stack(selected_masks),
+        "boxes" : torch.stack(selected_bboxes)
+    }
+
+    print("Number of sam proposals after removing all small proposals", selected_sam_detections["masks"].shape[0])
     masked_images = []
-    for mask in sam_detections["masks"].cpu():
+    for mask in selected_sam_detections["masks"].cpu():
         binary_mask = np.array(mask) * 255
         binary_mask = binary_mask.astype(np.uint8)
         masked_image = _extract_object_by_mask(rgb, binary_mask)
@@ -140,41 +170,41 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
         cnos_avg_scores.append(rounded_avg_score)
         cnos_top_5_scores.append(rounded_scores)
 
-    # Foundpose results
-    # Load original templates when before putting through dinov2 we also apply transformation.
-    def _create_mask(image, threshold=10):
-        return (np.sum(np.array(image), axis=2) > threshold).astype(np.uint8)
-    mask_syn_templates = [_create_mask(syn_temp) for syn_temp in syn_templates] # This image has 4 channels- the last one is not crucial - maybe about opacity
+    # # Foundpose results
+    # # Load original templates when before putting through dinov2 we also apply transformation.
+    # def _create_mask(image, threshold=10):
+    #     return (np.sum(np.array(image), axis=2) > threshold).astype(np.uint8)
+    # mask_syn_templates = [_create_mask(syn_temp) for syn_temp in syn_templates] # This image has 4 channels- the last one is not crucial - maybe about opacity
 
-    syn_num_valid_patches, syn_valid_patch_features = templates_feature_extraction_3(
-        templates = syn_templates, 
-        template_masks = mask_syn_templates, 
-        num_templates = syn_num_templates, 
-        dino_model = dinov2_vitl14, 
-        device = device
-    )
+    # syn_num_valid_patches, syn_valid_patch_features = templates_feature_extraction_3(
+    #     templates = syn_templates, 
+    #     template_masks = mask_syn_templates, 
+    #     num_templates = syn_num_templates, 
+    #     dino_model = dinov2_vitl14, 
+    #     device = device
+    # )
     
-    foundpose_average_scores = list()
-    foundpose_top_5_scores = list()
-    for i in trange(len(masked_images)):
-    # for i in range(0,2):
-        crop_rgb = np.array( masked_images[i]) # (124, 157, 3)
-        rounded_avg_score, rounded_scores = _bow_retrieval(crop_rgb, syn_templates, syn_valid_patch_features, syn_num_valid_patches, dino_model=dinov2_vitl14, device=device)
-        foundpose_average_scores.append(rounded_avg_score)
-        foundpose_top_5_scores.append(rounded_scores)
+    # foundpose_average_scores = list()
+    # foundpose_top_5_scores = list()
+    # for i in trange(len(masked_images)):
+    # # for i in range(0,2):
+    #     crop_rgb = np.array( masked_images[i]) # (124, 157, 3)
+    #     rounded_avg_score, rounded_scores,_ = _bow_retrieval(crop_rgb, syn_templates, syn_valid_patch_features, syn_num_valid_patches, dino_model=dinov2_vitl14, device=device)
+    #     foundpose_average_scores.append(rounded_avg_score)
+    #     foundpose_top_5_scores.append(rounded_scores)
 
     # save the score dict
     score_dict = {
         "cnos_avg_scores" : cnos_avg_scores,
         "cnos_top_5_scores" : cnos_top_5_scores,
-        "foundpose_avg_scores" : foundpose_average_scores,
-        "foundpose_top_5_scores" : foundpose_top_5_scores
+        # "foundpose_avg_scores" : foundpose_average_scores,
+        # "foundpose_top_5_scores" : foundpose_top_5_scores
     }
 
     with open(f'cnos_foundpose_analysis/{dataset}/score_dicts/score_dict_{scene_id:06d}_{frame_id:06d}_.pkl', 'wb') as file:
         pickle.dump(score_dict, file)
 
-    combined_avg_scores = [(cnos_avg_scores[i] + foundpose_average_scores[i])/2 for i in range(len(foundpose_average_scores))]
+    # combined_avg_scores = [(cnos_avg_scores[i] + foundpose_average_scores[i])/2 for i in range(len(foundpose_average_scores))]
 
     # selected_proposals_indices = [i for i, a_s in enumerate(combined_avg_scores) if a_s >0.35]
     # selected_proposals_scores = [a_s for i, a_s in enumerate(combined_avg_scores) if a_s >0.35]
@@ -184,23 +214,219 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
     # foundpose_selected_proposals_scores = [a_s for i, a_s in enumerate(foundpose_average_scores) if a_s >0.2]
 
 
-    selected_proposals_indices = [i for i, a_s in enumerate(combined_avg_scores) if a_s >0.01]
-    selected_proposals_scores = [a_s for i, a_s in enumerate(combined_avg_scores) if a_s >0.01]
+    # selected_proposals_indices = [i for i, a_s in enumerate(combined_avg_scores) if a_s >0.01]
+    # selected_proposals_scores = [a_s for i, a_s in enumerate(combined_avg_scores) if a_s >0.01]
+    # print(f"Cnos-Foundpose selected proposals: {len(selected_proposals_indices)}")
+
     cnos_selected_proposals_indices = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.01]
     cnos_selected_proposals_scores = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.01]
-    foundpose_selected_proposals_indices = [i for i, a_s in enumerate(foundpose_average_scores) if a_s >0.01]
-    foundpose_selected_proposals_scores = [a_s for i, a_s in enumerate(foundpose_average_scores) if a_s >0.01]
+    print(f"Cnos selected proposals: {len(cnos_selected_proposals_indices)}")
+
+    # foundpose_selected_proposals_indices = [i for i, a_s in enumerate(foundpose_average_scores) if a_s >0.01]
+    # foundpose_selected_proposals_scores = [a_s for i, a_s in enumerate(foundpose_average_scores) if a_s >0.01]
+    # print(f"Foundpose selected proposals: {len(cnos_selected_proposals_indices)}")
 
     # Cnos
     _save_final_results(selected_proposals_indices=cnos_selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos", confidence_scores = cnos_selected_proposals_scores )
     # Foundpose
-    _save_final_results(selected_proposals_indices=foundpose_selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "foundpose", confidence_scores =foundpose_selected_proposals_scores )
-    # Cnos_foundpose
-    _save_final_results(selected_proposals_indices=selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos_foundpose", confidence_scores = selected_proposals_scores)
+    # _save_final_results(selected_proposals_indices=foundpose_selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "foundpose", confidence_scores =foundpose_selected_proposals_scores )
+    # # # Cnos_foundpose
+    # _save_final_results(selected_proposals_indices=selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos_foundpose", confidence_scores = selected_proposals_scores)
 
     return 0
     # final_result
 
+from src.model.utils import BatchedData, Detections, convert_npz_to_json
+from types import SimpleNamespace
+from src.model.dinov2 import CustomDINOv2
+from src.dataloader.bop import BOPTemplate
+
+def cnos_foundpose_2(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
+    '''
+    using code from cnos to extract features for proposals
+    '''
+    model_type = "vit_h"
+    checkpoint_dir =  "datasets/bop23_challenge/pretrained/segment-anything"
+    sam_model = load_sam(model_type, checkpoint_dir)
+    custom_sam_model = CustomSamAutomaticMaskGenerator(sam=sam_model,min_mask_region_area=0,
+                                                        points_per_batch=64,
+                                                        stability_score_thresh=0.97,
+                                                        box_nms_thresh=0.7,
+                                                       crop_overlap_ratio=512/1500,
+                                                        segmentor_width_size=640) 
+
+    _move_to_device(custom_sam_model)
+    rgb = Image.open(rgb_path).convert("RGB")
+    sam_detections = custom_sam_model.generate_masks(np.array(rgb))
+
+    detections = Detections(sam_detections) # just turn the dict to a class thoi- still keys as masks, boxes
+    
+    mask_post_processing = SimpleNamespace(
+        min_box_size=0.05,  # relative to image size
+        min_mask_size=3e-4  # relative to image size
+    )
+
+    detections.remove_very_small_detections(
+        config= mask_post_processing.mask_post_processing
+    )
+    # compute descriptors
+    # Use image_np, to conver the bboxes as well as the masks to size of the input
+    dinov2_vitl14 = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
+    descriptor_model = CustomDINOv2(model_name="dinov2_vitl14", model=dinov2_vitl14, 
+                                    token_name="x_norm_clstoken", descriptor_width_size=640,
+                                      image_size=224, chunk_size=16 )
+    image_np = np.array(rgb)
+    query_decriptors = descriptor_model(image_np, detections) # shape as 56 ,1024 as number of proposals, 1024 as fatures dim from Dinov2
+
+    dataset ="icbin"
+    template_dir=f"datasets/bop23_challenge/datasets/templates_pyrender/{dataset}"
+    level_templates=1
+    pose_distribution="all"
+    image_size=224,
+    max_num_scenes=10,
+    max_num_frames= 500,
+    min_visib_fract= 0.8,
+    num_references= 200,
+    use_visible_mask= True
+    ref_dataset = BOPTemplate(template_dir=template_dir, obj_ids=None, level_templates=level_templates,pose_distribution=pose_distribution,
+                              image_size=image_size, max_num_scenes=max_num_scenes, max_num_frames= max_num_frames, min_visib_fract=min_visib_fract, num_references=num_references,
+                              use_visible_mask=use_visible_mask
+                              )
+    ref_dataset.load_processed_metaData(reset_metaData=True)
+
+
+
+
+
+    # print("Number of sam proposals before removing all small proposals", sam_detections["masks"].shape[0])
+
+    # from torchvision.ops.boxes import batched_nms, box_area
+
+    # def _remove_very_small_detections(masks, boxes): # after this step only valid boxes, masks are saved, other are filtered out
+    #     min_box_size = 0.05 # relative to image size 
+    #     min_mask_size = 3e-4 # 300/(640*480) # relative to image size assume the pixesl should be in range (300, 10000) need to remove them 
+    #     # max_mask_size = 10000/(640*480) 
+    #     img_area = masks.shape[1] * masks.shape[2]
+    #     box_areas = box_area(boxes) / img_area
+    #     # formatted_values = [f'{value.item():.6f}' for value in box_areas*img_area]
+    #     mask_areas = masks.sum(dim=(1, 2)) / img_area
+    #     # keep_idxs = torch.logical_and(
+    #     #     torch.logical_and(mask_areas > min_mask_size, mask_areas < max_mask_size),
+    #     #     box_areas > min_box_size**2
+    #     # )
+    #     keep_idxs = torch.logical_and(box_areas > min_box_size**2, mask_areas > min_mask_size)
+    #     return keep_idxs
+
+    # keep_idxs = _remove_very_small_detections(sam_detections["masks"], sam_detections["boxes"]) 
+    # selected_masks = [sam_detections["masks"][i] for i in range(len(keep_idxs)) if keep_idxs[i]]
+    # selected_bboxes = [sam_detections["boxes"][i] for i in range(len(keep_idxs)) if keep_idxs[i]]
+
+    # selected_sam_detections = {
+    #     "masks" : torch.stack(selected_masks),
+    #     "boxes" : torch.stack(selected_bboxes)
+    # }
+
+    # print("Number of sam proposals after removing all small proposals", selected_sam_detections["masks"].shape[0])
+    # masked_images = []
+    # for mask in selected_sam_detections["masks"].cpu():
+    #     binary_mask = np.array(mask) * 255
+    #     binary_mask = binary_mask.astype(np.uint8)
+    #     masked_image = _extract_object_by_mask(rgb, binary_mask)
+    #     masked_images.append(masked_image)
+    
+    # Load dinov2
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Extract features for templates
+    syn_data_type = "train_pbr" # test
+    out_folder = f"foundpose_analysis/{dataset}/templates"
+
+    syn_template_path_1 = f"{out_folder}/{syn_data_type}/obj_{obj_id:06d}_original" 
+    syn_template_files_1 = sorted(glob.glob(os.path.join(syn_template_path_1, "*.png")), key=os.path.getmtime)
+    syn_template_files = syn_template_files_1 
+    syn_num_templates = len(syn_template_files)
+    syn_templates = [np.array(Image.open(template_file).convert("RGB"))[:,:,:3] for template_file in syn_template_files] # This image has 4 channels- the last one is not crucial - maybe about opacity
+    syn_ref_features = cnos_templates_feature_extraction_2(
+        templates = syn_templates, num_templates = syn_num_templates, dino_model = descriptor_model, device = device
+        )
+
+    # Cnos Results
+    cnos_avg_scores = list()
+    cnos_top_5_scores = list()
+    # normal crop
+    for i in trange(len(masked_images)):
+        crop_rgb = np.array(masked_images[i]) # (124, 157, 3)
+        normal_features = cnos_crop_feature_extraction(crop_rgb, dinov2_vitl14, device)
+
+        rounded_avg_score, rounded_scores = cnos_calculate_similarity(crop_rgb, normal_features, syn_ref_features, syn_templates)
+        cnos_avg_scores.append(rounded_avg_score)
+        cnos_top_5_scores.append(rounded_scores)
+
+    # # Foundpose results
+    # # Load original templates when before putting through dinov2 we also apply transformation.
+    # def _create_mask(image, threshold=10):
+    #     return (np.sum(np.array(image), axis=2) > threshold).astype(np.uint8)
+    # mask_syn_templates = [_create_mask(syn_temp) for syn_temp in syn_templates] # This image has 4 channels- the last one is not crucial - maybe about opacity
+
+    # syn_num_valid_patches, syn_valid_patch_features = templates_feature_extraction_3(
+    #     templates = syn_templates, 
+    #     template_masks = mask_syn_templates, 
+    #     num_templates = syn_num_templates, 
+    #     dino_model = dinov2_vitl14, 
+    #     device = device
+    # )
+    
+    # foundpose_average_scores = list()
+    # foundpose_top_5_scores = list()
+    # for i in trange(len(masked_images)):
+    # # for i in range(0,2):
+    #     crop_rgb = np.array( masked_images[i]) # (124, 157, 3)
+    #     rounded_avg_score, rounded_scores,_ = _bow_retrieval(crop_rgb, syn_templates, syn_valid_patch_features, syn_num_valid_patches, dino_model=dinov2_vitl14, device=device)
+    #     foundpose_average_scores.append(rounded_avg_score)
+    #     foundpose_top_5_scores.append(rounded_scores)
+
+    # save the score dict
+    score_dict = {
+        "cnos_avg_scores" : cnos_avg_scores,
+        "cnos_top_5_scores" : cnos_top_5_scores,
+        # "foundpose_avg_scores" : foundpose_average_scores,
+        # "foundpose_top_5_scores" : foundpose_top_5_scores
+    }
+
+    with open(f'cnos_foundpose_analysis/{dataset}/score_dicts/score_dict_{scene_id:06d}_{frame_id:06d}_.pkl', 'wb') as file:
+        pickle.dump(score_dict, file)
+
+    # combined_avg_scores = [(cnos_avg_scores[i] + foundpose_average_scores[i])/2 for i in range(len(foundpose_average_scores))]
+
+    # selected_proposals_indices = [i for i, a_s in enumerate(combined_avg_scores) if a_s >0.35]
+    # selected_proposals_scores = [a_s for i, a_s in enumerate(combined_avg_scores) if a_s >0.35]
+    # cnos_selected_proposals_indices = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.5]
+    # cnos_selected_proposals_scores = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.5]
+    # foundpose_selected_proposals_indices = [i for i, a_s in enumerate(foundpose_average_scores) if a_s >0.2]
+    # foundpose_selected_proposals_scores = [a_s for i, a_s in enumerate(foundpose_average_scores) if a_s >0.2]
+
+
+    # selected_proposals_indices = [i for i, a_s in enumerate(combined_avg_scores) if a_s >0.01]
+    # selected_proposals_scores = [a_s for i, a_s in enumerate(combined_avg_scores) if a_s >0.01]
+    # print(f"Cnos-Foundpose selected proposals: {len(selected_proposals_indices)}")
+
+    cnos_selected_proposals_indices = [i for i, a_s in enumerate(cnos_avg_scores) if a_s >0.01]
+    cnos_selected_proposals_scores = [a_s for i, a_s in enumerate(cnos_avg_scores) if a_s >0.01]
+    print(f"Cnos selected proposals: {len(cnos_selected_proposals_indices)}")
+
+    # foundpose_selected_proposals_indices = [i for i, a_s in enumerate(foundpose_average_scores) if a_s >0.01]
+    # foundpose_selected_proposals_scores = [a_s for i, a_s in enumerate(foundpose_average_scores) if a_s >0.01]
+    # print(f"Foundpose selected proposals: {len(cnos_selected_proposals_indices)}")
+
+    # Cnos
+    _save_final_results(selected_proposals_indices=cnos_selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos", confidence_scores = cnos_selected_proposals_scores )
+    # Foundpose
+    # _save_final_results(selected_proposals_indices=foundpose_selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "foundpose", confidence_scores =foundpose_selected_proposals_scores )
+    # # # Cnos_foundpose
+    # _save_final_results(selected_proposals_indices=selected_proposals_indices, scene_id=scene_id, frame_id=frame_id, sam_detections=sam_detections, dataset=dataset, rgb_path=rgb_path, type = "cnos_foundpose", confidence_scores = selected_proposals_scores)
+
+    return 0
+    # final_result
 
 def cnos_different_thresholds(rgb_path, custom_sam_model, scene_id, frame_id, obj_id=1, dataset="icbin"):
 

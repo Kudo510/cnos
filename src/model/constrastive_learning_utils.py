@@ -182,7 +182,7 @@ def extract_positive_pairs(all_pos_proposals, templates):
                 continue
             pos_pairs.append(pos_pair)
 
-    augmented_pos_pairs = _augment_pos_pairs(pos_pairs)
+    augmented_pos_pairs = pos_pairs # _augment_pos_pairs(pos_pairs)
     return augmented_pos_pairs
 
 

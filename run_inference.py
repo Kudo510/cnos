@@ -77,6 +77,11 @@ def run_inference(cfg: DictConfig):
         dataloaders=query_dataloader,
     )
     logging.info(f"---" * 20)
+    # trainer.test_step_foundpose(
+    #     model,
+    #     dataloaders=query_dataloader,
+    # )
+    # logging.info(f"---" * 20)
 
 
 if __name__ == "__main__":

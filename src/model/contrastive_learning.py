@@ -1242,11 +1242,45 @@ def train_contrastive_loss(device, model, train_loader, val_loader, num_epochs, 
         })
 
 
+# Custom version with weighted negatives:
+class WeightedCosineEmbeddingLoss(nn.Module):
+    def __init__(self, margin=0.5, negative_weight=3.0):
+        super().__init__()
+        self.margin = margin
+        self.negative_weight = negative_weight
+    
+    def forward(self, x1, x2, target):
+        """
+        Args:
+            x1, x2: Input embeddings
+            target: 1 for positive pairs, -1 for negative pairs
+        """
+        cos_sim = F.cosine_similarity(x1, x2)
+        
+        # Split positive and negative pairs
+        pos_mask = (target == 1)
+        neg_mask = (target == -1)
+        
+        # Compute losses separately for positive and negative pairs
+        pos_loss = (1 - cos_sim)[pos_mask]
+        neg_loss = (torch.clamp(cos_sim - self.margin, min=0))[neg_mask]
+        
+        # Weight negative losses more heavily
+        if pos_loss.size(0) > 0 and neg_loss.size(0) > 0:
+            return (pos_loss.mean() + self.negative_weight * neg_loss.mean()) / 2
+        elif pos_loss.size(0) > 0:
+            return pos_loss.mean()
+        elif neg_loss.size(0) > 0:
+            return neg_loss.mean() * self.negative_weight
+        else:
+            return torch.tensor(0.0, device=x1.device)
+
+
 def train_cosine_loss(device, model, train_loader, val_loader, num_epochs, dataset):
 
     wandb_run = wandb.init(project="cnos_contrastive_learning")
     model = model.to(device)
-    criterion = nn.CosineEmbeddingLoss() # use a Classification Cross-Entropy loss
+    criterion = WeightedCosineEmbeddingLoss() # nn.CosineEmbeddingLoss() # use a Classification Cross-Entropy loss
     optimizer = optim.Adam(model.parameters(), lr=0.00005)
     # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.2)
 

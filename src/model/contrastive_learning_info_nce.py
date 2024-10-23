@@ -850,7 +850,7 @@ class ContrastiveLearningModel_2(nn.Module):
 
 
 class InfoNCELoss(nn.Module):
-    def __init__(self, temperature=0.07):
+    def __init__(self, temperature=0.07): # lower temperature - more contrast # # Usually between 0.07 and 0.1
         super().__init__()
         self.temperature = temperature
 

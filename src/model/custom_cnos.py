@@ -146,11 +146,11 @@ def modified_run_inference(template_dir, rgb_path, detections, ref_feats, decrip
     save_json_bop23(save_path +".json", detections)
     vis_img = visualize(rgb, detections, save_path)
 
-    plt.figure(figsize=(12, 8))  # width, height in inches
-    # Display the image
-    plt.imshow(vis_img)
-    plt.axis('off')  # Optionally turn off the axis
-    plt.show()
+    # plt.figure(figsize=(12, 8))  # width, height in inches
+    # # Display the image
+    # plt.imshow(vis_img)
+    # plt.axis('off')  # Optionally turn off the axis
+    # plt.show()
     vis_img.save(f"output_cnos_analysis_5/{templates_type}/cnos_results/vis.png")
 
 def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
@@ -172,11 +172,11 @@ def calculate_similarity(crop_rgb, feature_decriptors, ref_features,templates):
     rounded_scores = [math.ceil(score * 1000) / 1000 for score in similar_scores[0]]
     rounded_avg_score = math.ceil(score_per_detection.item() * 1000) / 1000
 
-    width = 50
-    height = 50
-    fig = plt.figure(figsize=(7, 7))
-    columns = 3
-    rows = 2
+    # width = 50
+    # height = 50
+    # fig = plt.figure(figsize=(7, 7))
+    # columns = 3
+    # rows = 2
 
     # for i, index in enumerate(similar_template_indices[0]):
     #     fig.add_subplot(rows, columns, i + 1)
@@ -535,6 +535,50 @@ def cnos_templates_feature_extraction(templates, dino_model, num_templates, devi
 
     return patch_features.squeeze().to("cuda:0")
 
+def cnos_templates_feature_extraction_2(templates, dino_model, num_templates, device):
+    '''
+    using custom dinov2 from cnos
+    '''
+    rgb_normalize = T.Compose(
+        [
+            T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+    normalized_templates = [rgb_normalize(template/255.0).float() for template in templates]
+    # normalized_crop_rgb = torch.tensor(crop_rgb, dtype=torch.float32).permute(2,0,1)
+    # print("normalized_templates shape", normalized_templates[0].shape)
+
+    scaled_padded_templates = [resize_and_pad_image(normalized_template, target_max=224)
+                            for normalized_template in normalized_templates] # Unsqueeze to make it as a stack of proposals - here we use only 1 proposals
+    # print("scaled_padded_templates.shape", len(scaled_padded_templates), scaled_padded_templates[0].shape) 
+
+    
+    # plt.imshow(templates[0]) #, cmap=plt.cm.gray)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
+
+    batch_size = 16
+    layers_list = list(range(24))
+    template_batches = [scaled_padded_templates[i:i+batch_size] for i in range(0, len(scaled_padded_templates), batch_size)]
+    patch_features= list()
+
+    for batch in template_batches:
+        batch = torch.stack(batch)
+        size = batch.shape[0]
+        torch.cuda.empty_cache()
+        with torch.no_grad(): 
+            batch_feature = dino_model.module.get_intermediate_layers(
+                batch.to(device), n=layers_list, return_class_token=True
+                )[23][1].reshape(size,-1,1024).cpu()
+        patch_features.append(batch_feature.to('cpu'))
+        del batch_feature
+    patch_features = torch.cat(patch_features)
+    del dino_model
+
+    return patch_features.squeeze().to("cuda:0")
+
 
 def modified_cnos_templates_feature_extraction(templates, dino_model, num_templates, device):
     ''' 
@@ -794,17 +838,25 @@ def custom_detections_cnos_foundpose(sam_detections, idx_selected_proposals, fil
     
     pred_idx_objects = torch.tensor([1]).repeat(len(idx_selected_proposals)) # temperary class 1 for object 1 only
 
-    # keep only detections with score > conf_threshold
-    detections.filter(idx_selected_proposals)
+    detections.filter(idx_selected_proposals) # just get only the selected id
 
-    detections.add_attribute("scores", confidence_scores.cuda())
+    # print("detections before removing small:", len(detections) )
+    # detections.remove_very_small_detections_custom(
+    #         config=mask_post_processing
+    #     )
+    # print("detections after removing small:", len(detections) )
+
+    detections.add_attribute("scores", torch.tensor(confidence_scores).cuda())
     detections.add_attribute("object_ids", pred_idx_objects)
+    print(f"Number of proposals before nms as number of selected proposals {len(detections)}")
 
-    detections.filter_contained_boxes()
     detections.apply_nms_per_object_id(
-        nms_thresh=0.5
+        nms_thresh=0.25
     )
-
+    # detections.apply_nms(
+    #     nms_thresh=0.25
+    # )
+    print(f"Number of proposals after nms as final : {len(detections)}")
     # detections.filter_cluttered_bboxes() # filter missclassified background 
     detections.to_numpy()
 
@@ -822,7 +874,7 @@ def custom_detections_cnos_foundpose(sam_detections, idx_selected_proposals, fil
         frame_id=int(frame_id),
         runtime=1,
         file_path=file_path,
-        dataset_name="icbin",
+        dataset_name="daoliuzhao",
         return_results=True,
     )
 

@@ -128,7 +128,7 @@ Testing on custom image
         HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=hudiebanjin model.onboarding_config.rendering_type=pyrender 
             HYDRA_FULL_ERROR=1  to show full error with for hydra
 
-        python run_inference.py dataset_name=$DATASET_NAME
+        HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=daoliuzhao
     to visualize
             export DATASET_NAME=hudiebanjin 
             export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_hudiebanjin.json

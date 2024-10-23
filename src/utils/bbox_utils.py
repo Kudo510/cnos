@@ -124,7 +124,81 @@ class CropResizePad:
             )[0]
             processed_images.append(image)
         return torch.stack(processed_images) # so we got num_proposals, 3,224,224 afterwards- basically stacks of proposals
-
+    
+    def process_images_masks(self, images, boxes):
+        """
+        Process images and create corresponding masks by cropping, resizing, and padding.
+        
+        Args:
+            images (torch.Tensor): Input images [N, C, H, W]
+            boxes (torch.Tensor): Bounding boxes [N, 4] in (x1, y1, x2, y2) format
+            
+        Returns:
+            tuple: (processed_images, processed_masks) where processed_masks are binary 
+                  masks indicating the non-zero regions of processed_images
+        """
+        box_sizes = boxes[:, 2:] - boxes[:, :2]  # (x2,y2) - (x1,y1)
+        scale_factor = self.target_max / torch.max(box_sizes, dim=-1)[0]  # 224/max of box dims
+        
+        processed_images = []
+        processed_masks = []
+        
+        for image, box, scale in zip(images, boxes, scale_factor):
+            # Crop and scale image
+            cropped_image = image[:, box[1]:box[3], box[0]:box[2]]  # crop 
+            scaled_image = F.interpolate(cropped_image.unsqueeze(0), scale_factor=scale.item())[0]
+            
+            # Create mask from the scaled image (any non-zero channel means it's part of the object)
+            mask = (scaled_image.sum(dim=0) != 0).float()
+            
+            # Get dimensions for padding
+            original_h, original_w = scaled_image.shape[1:]
+            original_ratio = original_w / original_h
+            
+            # Calculate padding if aspect ratios don't match
+            if self.target_ratio != original_ratio:
+                padding_top = max((self.target_h - original_h) // 2, 0)
+                padding_bottom = self.target_h - original_h - padding_top
+                padding_left = max((self.target_w - original_w) // 2, 0)
+                padding_right = self.target_w - original_w - padding_left
+                
+                # Pad image
+                scaled_image = F.pad(
+                    scaled_image, 
+                    (padding_left, padding_right, padding_top, padding_bottom)
+                )
+                
+                # Pad mask
+                mask = F.pad(
+                    mask.unsqueeze(0),
+                    (padding_left, padding_right, padding_top, padding_bottom),
+                    value=0  # pad masks with 0
+                )[0]
+            
+            assert scaled_image.shape[1] == scaled_image.shape[2], logging.info(
+                f"image {scaled_image.shape} is not square after padding"
+            )
+            
+            # Final resize to target size
+            final_scale = self.target_h / scaled_image.shape[1]
+            final_image = F.interpolate(
+                scaled_image.unsqueeze(0), 
+                scale_factor=final_scale
+            )[0]
+            
+            final_mask = F.interpolate(
+                mask.unsqueeze(0).unsqueeze(0),
+                scale_factor=final_scale,
+                mode='nearest'
+            )[0, 0]
+            
+            processed_images.append(final_image)
+            processed_masks.append(final_mask)
+        
+        processed_images = torch.stack(processed_images)  # [N, C, target_h, target_w]
+        processed_masks = torch.stack(processed_masks)    # [N, target_h, target_w]
+        
+        return processed_images, processed_masks
 
 def xyxy_to_xywh(bbox):
     if len(bbox.shape) == 1:

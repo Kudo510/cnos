@@ -656,10 +656,10 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
     for idx in similar_template_indices[0]:
            similar_templates.append(templates[idx])
 
-    # Display the crop
-    plt.imshow(crop_rgb)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # # Display the crop
+    # plt.imshow(crop_rgb)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     # Round up to two decimal places
     
@@ -678,19 +678,19 @@ def calculate_similarity(crop_rgb, query_features, ref_features, templates, synt
     columns = 3
     rows = 2
 
-    for index, template in enumerate(similar_templates):
-        fig.add_subplot(rows, columns, index + 1)
-        img = template # transpose(1, 2, 0)
-        plt.imshow(img)
-        plt.axis('off')
-        plt.title(f'Top Template {similar_template_indices[0][index]}')
+    # for index, template in enumerate(similar_templates):
+    #     fig.add_subplot(rows, columns, index + 1)
+    #     img = template # transpose(1, 2, 0)
+    #     plt.imshow(img)
+    #     plt.axis('off')
+    #     plt.title(f'Top Template {similar_template_indices[0][index]}')
 
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
 
     # Print the results
-    print("Top 5 scores:", rounded_scores)
-    print("Average score:", rounded_avg_score)
+    # print("Top 5 scores:", rounded_scores)
+    # print("Average score:", rounded_avg_score)
 
     return rounded_avg_score, rounded_scores , similar_templates
 
