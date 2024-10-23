@@ -484,14 +484,14 @@ def crop_feature_extraction_3(crop_rgb, dino_model, device):
     # mask = np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1, dtype="uint8").reshape(-1)
     mask = _create_mask2(resized_crop).reshape(-1)
 
-    plt.imshow(resized_crop.permute(1,2,0))
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # plt.imshow(resized_crop.permute(1,2,0))
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
-    # Display the image - 10* see lb the crop is normalized same way as the templates- ready to compare the similarity now
-    plt.imshow(np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1), cmap=plt.cm.gray)
-    plt.axis('off')  # Optional: Turn off the axis
-    plt.show()
+    # # Display the image - 10* see lb the crop is normalized same way as the templates- ready to compare the similarity now
+    # plt.imshow(np.clip(np.sum(np.array(resized_crop), axis=0), 0, 1), cmap=plt.cm.gray)
+    # plt.axis('off')  # Optional: Turn off the axis
+    # plt.show()
 
     # Extract features from 18th layer of Dinov2 
     layers_list = list(range(24))

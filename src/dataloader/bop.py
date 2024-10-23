@@ -115,6 +115,7 @@ class BaseBOPTest(BaseBOP):
             image=image,
             scene_id=scene_id,
             frame_id=frame_id,
+            rgb_path=rgb_path
         )
 
 

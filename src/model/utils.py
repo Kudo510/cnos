@@ -106,6 +106,19 @@ class Detections:
         for key in self.keys:
             setattr(self, key, getattr(self, key)[keep_idxs])
 
+    def remove_very_small_detections_custom(self, config): # after this step only valid boxes, masks are saved, other are filtered out
+        # min_box_size: 0.05 # relative to image size 
+        # min_mask_size: 3e-4 # relative to image size
+        img_area = self.masks.shape[1] * self.masks.shape[2]
+        box_areas = box_area(self.boxes) / img_area
+        mask_areas = self.masks.sum(dim=(1, 2)) / img_area
+        keep_idxs = torch.logical_and(
+            box_areas > config.min_box_size**2, mask_areas > config.min_mask_size
+        )
+        logging.info(f"Removing {len(keep_idxs) - keep_idxs.sum()} detections")
+        for key in self.keys:
+            setattr(self, key, getattr(self, key)[keep_idxs])
+
     def apply_nms_per_object_id(self, nms_thresh=0.5):
         '''
         self.object_ids actually is pred_idx_objects - a list of object id that the selected proposals are 
@@ -267,7 +280,7 @@ class Detections:
             else lmo_object_ids[self.object_ids],
             "score": self.scores,
             "bbox": boxes,
-            # "time": runtime,
+            "time": 1.0,  # runtime,
             "segmentation": self.masks,
         }
         save_npz(file_path, results)
@@ -328,7 +341,7 @@ def convert_npz_to_json_2(idx, list_npz_paths):
             "image_id": int(detections["image_id"]),
             "category_id": int(detections["category_id"][idx_det]),
             "bbox": detections["bbox"][idx_det].tolist(),
-            "score": 1.0, # float(detections["score"][idx_det]),
+            "score": float(detections["score"][idx_det]),
             "time": 1.0, # float(detections["time"]),
             "segmentation": mask_to_rle(
                 force_binary_mask(detections["segmentation"][idx_det])
