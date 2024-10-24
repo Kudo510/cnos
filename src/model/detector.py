@@ -100,7 +100,7 @@ class CNOS(pl.LightningModule):
         Extract pach templates in Founpose for templates
         '''
 
-        self.ref_data = {"descriptors": BatchedData(None)}
+        self.ref_data = {"patch_descriptors": BatchedData(None)}
         for idx in tqdm(
                 range(len(self.ref_dataset)),
                 desc="Computing patch descriptor for FoundPose ...",
@@ -114,17 +114,22 @@ class CNOS(pl.LightningModule):
         self.ref_data["patch_descriptors"] = self.ref_data["patch_descriptors"].data
     
     def filter_out_invalid_templates(self):
+        self.templates_patch_feature_extraction()
+
         num_valid_patches = list() # List of numbers of valid patches for each template
         valid_patch_features = list()
         resized_masks = list()
+        # self.ref_dataset) len = num_objs here = 1 - each has shape of 42, 224,224
+        
         for idx in tqdm(
                 range(len(self.ref_dataset)),
                 desc="resizing masks for FoundPose ...",
             ):
-            mask = resize_and_pad_image(self.ref_dataset[idx]["templates_masks"], target_max=30).flatten()  
+            num_template = self.ref_dataset[idx]["templates_masks"].shape[0]
+            mask = self.ref_dataset[idx]["templates_masks"].reshape(num_template, -1)  #  self.ref_dataset[idx]["templates_masks"] has shape of 42,224,224
             resized_masks.append(mask)
 
-        for patch_feature, mask in zip(self.ref_data["patch_descriptors"], resized_masks):
+        for patch_feature, mask in zip(self.ref_data["patch_descriptors"][0], resized_masks[0]): # 0 here measn we have only 1 object- or we are doing it jsut for first object only 
             valid_patches = patch_feature[mask==1]
             valid_patch_features.append(valid_patches)
             num_valid_patches.append(valid_patches.shape[0]) # Append number of  valid patches for the template to the list
@@ -217,13 +222,13 @@ class CNOS(pl.LightningModule):
 
         idx_selected_proposals = torch.arange(
             len(score_per_proposal), device=score_per_proposal.device
-        )[score_per_proposal > self.matching_config.confidence_thresh]
+        )# [score_per_proposal > self.matching_config.confidence_thresh]
         pred_idx_objects = assigned_idx_object[idx_selected_proposals]
         pred_scores = score_per_proposal[idx_selected_proposals]
         return idx_selected_proposals, pred_idx_objects, pred_scores 
     
-    @classmethod
-    def kmeans_clustering(pca_patches_descriptors, ncentroids = 2048, niter = 20, verbose = True):
+
+    def kmeans_clustering(self, pca_patches_descriptors, ncentroids = 2048, niter = 20, verbose = True):
     # https://github.com/facebookresearch/faiss/wiki/Faiss-building-blocks:-clustering,-PCA,-quantization
 
         d = pca_patches_descriptors.shape[1]
@@ -260,7 +265,7 @@ class CNOS(pl.LightningModule):
         image_np = np.uint8(image_np.clip(0, 1) * 255) # turn back as normal image
 
         # run propoals
-        proposal_stage_start_time = time.time()
+        
         proposals = self.segmentor_model.generate_masks(image_np) # a dict of 'masks', 'boxes')
         print(f"Number of sam proposals: {proposals['masks'].shape}")
 
@@ -278,38 +283,48 @@ class CNOS(pl.LightningModule):
         # Building BoW
         templates_num_valid_patches, templates_valid_patch_features = self.filter_out_invalid_templates()
         
-        crop_num_valid_patches, valid_crop_feature_patches = self.descriptor_model.compute_patch_features(image_np, detections) # shape as 56 ,1024 as number of proposals, 1024 as fatures dim from Dinov2
-        all_valid_patch_features = torch.cat((valid_crop_feature_patches, templates_valid_patch_features), dim=0)
+        crop_num_valid_patches, valid_crop_feature_patches = self.descriptor_model.compute_patch_features(image_np, detections) # valid_crop_feature_patches is a list of num_proposals, each is the valid patches
+        all_valid_patch_features = [torch.cat((valid_crop_feature_patch, templates_valid_patch_features), dim=0) for valid_crop_feature_patch in valid_crop_feature_patches]
 
-        pca = PCA(n_components=256, random_state=5)
-        pca_crop_patches_descriptors = pca.fit_transform(np.array(all_valid_patch_features.cpu()))
+        bow_scores = list()
+        proposal_stage_start_time = time.time()
+        for i in range(len(all_valid_patch_features)):
+            pca = PCA(n_components=256, random_state=5)
+            pca_crop_patches_descriptors = pca.fit_transform(np.array(all_valid_patch_features[i].cpu()))
 
-        pca_crop = pca_crop_patches_descriptors[:valid_crop_feature_patches.shape[0]]
-        pca_templates = pca_crop_patches_descriptors[valid_crop_feature_patches.shape[0]:]
+            pca_crop = pca_crop_patches_descriptors[:valid_crop_feature_patches[i].shape[0]]
+            pca_templates = pca_crop_patches_descriptors[valid_crop_feature_patches[i].shape[0]:]
 
-        kmeans = self.kmeans_clustering(pca_templates, ncentroids = 2048, niter = 20, verbose = True)
-        templates_labels = calculate_templates_labels(templates_num_valid_patches, kmeans, pca_templates)
-        templates_vector = calculate_templates_vector(templates_labels = templates_labels, num_clusters = 2048)
+            kmeans = self.kmeans_clustering(pca_templates, ncentroids = 2048, niter = 10, verbose = True)
+            templates_labels = calculate_templates_labels(templates_num_valid_patches, kmeans, pca_templates)
+            templates_vector = calculate_templates_vector(templates_labels = templates_labels, num_clusters = 2048)
 
-        # Assign labels to the data points
-        crop_labels = kmeans.index.search(pca_crop, 1)[1].reshape(-1)
-        
-        crop_vector = calculate_crop_vector(crop_labels = crop_labels, templates_labels = templates_labels, num_clusters = 2048)
-        concat_templates_vector = torch.cat([torch.tensor(vector).view(1,-1) for vector in templates_vector]) # Goal torch.Size([642, 2048])
+            # Assign labels to the data points
+            crop_labels = kmeans.index.search(pca_crop, 1)[1].reshape(-1)
+            
+            crop_vector = calculate_crop_vector(crop_labels = crop_labels, templates_labels = templates_labels, num_clusters = 2048)
+            concat_templates_vector = torch.cat([torch.tensor(vector).view(1,-1) for vector in templates_vector]) # Goal torch.Size([642, 2048])
+
+            (
+                _,
+                _,
+                pred_scores,
+            ) = self.find_matched_proposals_2(crop_vector, concat_templates_vector.unsqueeze(0))
+            bow_scores.append(pred_scores)
 
         proposal_stage_end_time = time.time()
+        print(f"Calculating time per test image {proposal_stage_end_time-proposal_stage_start_time}")
+        
+        selected_proposals_indices = [i for i, a_s in enumerate(bow_scores) if a_s >0.01]
+        selected_proposals_scores = [a_s for i, a_s in enumerate(bow_scores) if a_s >0.01]
         # matching descriptors
         matching_stage_start_time = time.time()
-        (
-            idx_selected_proposals,
-            pred_idx_objects,
-            pred_scores,
-        ) = self.find_matched_proposals_2(crop_vector, concat_templates_vector)
-        print(f"Number of chosen detections with scores bigger than 0.01: {len(detections)}")
 
         # update detections
-        detections.filter(idx_selected_proposals)
-        detections.add_attribute("scores", pred_scores)
+        detections.add_attribute("scores", torch.tensor(bow_scores).cuda())
+        detections.filter(selected_proposals_indices)
+
+        pred_idx_objects = torch.tensor([1]).repeat(len(selected_proposals_indices)) # temperary class 1 for object 1 only
         # detections.add_attribute("scores",(pred_scores+1)/2)
         detections.add_attribute("object_ids", pred_idx_objects)
         print(f"Number of chosen detections before applying nms: {len(detections)}")

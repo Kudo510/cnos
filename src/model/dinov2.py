@@ -48,6 +48,7 @@ class CustomDINOv2(pl.LightningModule):
         )
         # use for global feature
         self.rgb_proposal_processor = CropResizePad(self.proposal_size)
+        self.rgb_proposal_processor_2 = CropResizePad(420) # founpose needs 420 not 224
         self.rgb_resize = CustomResizeLongestSide(
             descriptor_width_size, dividable_size=self.patch_size
         )
@@ -78,8 +79,8 @@ class CustomDINOv2(pl.LightningModule):
         rgb = self.rgb_normalize(image_np).to(masks.device).float() # nomralize the image - 3,480, 640
         rgbs = rgb.unsqueeze(0).repeat(num_proposals, 1, 1, 1) # 55, 3, 480, 640
         masked_rgbs = rgbs * masks.unsqueeze(1)
-        processed_masked_rgbs, processed_masks  = self.rgb_proposal_processor.process_images_masks(
-            masked_rgbs, boxes
+        processed_masked_rgbs, processed_masks  = self.rgb_proposal_processor_2.process_images_masks(
+            masked_rgbs, boxes, target_size_mask=30
         )  # [N, 3, target_size, target_size]
         return processed_masked_rgbs, processed_masks
     
@@ -127,27 +128,29 @@ class CustomDINOv2(pl.LightningModule):
         '''
         # patch_features = list()
         layers_list = list(range(24))
+        num_images = images.shape[0]
         with torch.no_grad(): 
             patch_feature = self.model.get_intermediate_layers(
                     images, n=layers_list, return_class_token=True
-                    )[18][0].reshape(-1,1024)
+                    )[18][0].reshape(num_images, -1,1024)
             # patch_features.append(patch_feature)
         return patch_feature # torch.cat(patch_features)
     
-    @classmethod
-    def filter_out_invalid_templates(patch_features, masks):
+    def filter_out_invalid_templates(self, patch_features, masks):
         num_valid_patches = list() # List of numbers of valid patches for each template
         valid_patch_features = list()
-        for patch_feature, mask in zip(patch_features, masks):
+        num_images = masks.shape[0]
+        reshaped_masks = masks.reshape(num_images, -1)
+        for patch_feature, mask in zip(patch_features, reshaped_masks):
             valid_patches = patch_feature[mask==1]
             valid_patch_features.append(valid_patches)
             num_valid_patches.append(valid_patches.shape[0]) # Append number of  valid patches for the template to the list
-        valid_patch_features = torch.cat(valid_patch_features)
+        # valid_patch_features = torch.cat(valid_patch_features)
         return num_valid_patches, valid_patch_features
     
     @torch.no_grad()
     def compute_patch_features(self, image_np, proposals):
-        processed_rgbs, processed_masks = self.process_rgb_proposals(
+        processed_rgbs, processed_masks = self.process_rgb_proposals_2(
             image_np, proposals.masks, proposals.boxes
         ) # processed_masks is tensor of num_proposal, H, W 
 

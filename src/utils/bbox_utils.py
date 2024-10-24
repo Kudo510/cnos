@@ -125,17 +125,20 @@ class CropResizePad:
             processed_images.append(image)
         return torch.stack(processed_images) # so we got num_proposals, 3,224,224 afterwards- basically stacks of proposals
     
-    def process_images_masks(self, images, boxes):
+    def process_images_masks(self, images, boxes, target_size_mask=224):
         """
         Process images and create corresponding masks by cropping, resizing, and padding.
+        Images are resized to self.target_size while masks are resized to target_size_mask.
         
         Args:
             images (torch.Tensor): Input images [N, C, H, W]
             boxes (torch.Tensor): Bounding boxes [N, 4] in (x1, y1, x2, y2) format
+            target_size_mask (int): Target size for masks (default: 224)
             
         Returns:
-            tuple: (processed_images, processed_masks) where processed_masks are binary 
-                  masks indicating the non-zero regions of processed_images
+            tuple: (processed_images, processed_masks) where:
+                - processed_images: [N, C, self.target_h, self.target_w]
+                - processed_masks: [N, target_size_mask, target_size_mask]
         """
         box_sizes = boxes[:, 2:] - boxes[:, :2]  # (x2,y2) - (x1,y1)
         scale_factor = self.target_max / torch.max(box_sizes, dim=-1)[0]  # 224/max of box dims
@@ -179,16 +182,17 @@ class CropResizePad:
                 f"image {scaled_image.shape} is not square after padding"
             )
             
-            # Final resize to target size
+            # Resize image to target size
             final_scale = self.target_h / scaled_image.shape[1]
             final_image = F.interpolate(
                 scaled_image.unsqueeze(0), 
                 scale_factor=final_scale
             )[0]
             
+            # Resize mask to target_size_mask
             final_mask = F.interpolate(
                 mask.unsqueeze(0).unsqueeze(0),
-                scale_factor=final_scale,
+                size=(target_size_mask, target_size_mask),  # Use specific size for mask
                 mode='nearest'
             )[0, 0]
             
@@ -196,10 +200,11 @@ class CropResizePad:
             processed_masks.append(final_mask)
         
         processed_images = torch.stack(processed_images)  # [N, C, target_h, target_w]
-        processed_masks = torch.stack(processed_masks)    # [N, target_h, target_w]
+        processed_masks = torch.stack(processed_masks)    # [N, target_size_mask, target_size_mask]
         
         return processed_images, processed_masks
-
+    
+    
 def xyxy_to_xywh(bbox):
     if len(bbox.shape) == 1:
         """Convert [x1, y1, x2, y2] box format to [x, y, w, h] format."""

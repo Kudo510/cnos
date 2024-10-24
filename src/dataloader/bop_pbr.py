@@ -69,6 +69,7 @@ class BOPTemplatePBR(BaseBOP):
             ]
         )
         self.proposal_processor = CropResizePad(self.processing_config.image_size)
+        self.proposal_processor_2 = CropResizePad(420) # resize templates as 420 not 224
 
     def __len__(self):
         return len(self.obj_ids)
@@ -230,8 +231,12 @@ class BOPTemplatePBR(BaseBOP):
 
         templates = torch.stack(templates).permute(0, 3, 1, 2)
         boxes = torch.tensor(np.array(boxes))
-        templates_croped = self.proposal_processor(images=templates, boxes=boxes)
-        return {"templates": self.rgb_transform(templates_croped)}
+        # templates_croped = self.proposal_processor(images=templates, boxes=boxes)
+        templates_croped, templates_masks = self.proposal_processor_2.process_images_masks(images=templates, boxes=boxes, target_size_mask=30)
+
+        # templates_masks shape as 42,224,224
+        return {"templates": self.rgb_transform(templates_croped),
+                "templates_masks": templates_masks}
 
 
 if __name__ == "__main__":
