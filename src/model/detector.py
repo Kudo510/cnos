@@ -295,14 +295,15 @@ class CNOS(pl.LightningModule):
             pca_crop = pca_crop_patches_descriptors[:valid_crop_feature_patches[i].shape[0]]
             pca_templates = pca_crop_patches_descriptors[valid_crop_feature_patches[i].shape[0]:]
 
-            kmeans = self.kmeans_clustering(pca_templates, ncentroids = 2048, niter = 10, verbose = True)
+            ## Change here from 2048 to 1024
+            kmeans = self.kmeans_clustering(pca_templates, ncentroids = 1024, niter = 10, verbose = True)
             templates_labels = calculate_templates_labels(templates_num_valid_patches, kmeans, pca_templates)
-            templates_vector = calculate_templates_vector(templates_labels = templates_labels, num_clusters = 2048)
+            templates_vector = calculate_templates_vector(templates_labels = templates_labels, num_clusters = 1024)
 
             # Assign labels to the data points
             crop_labels = kmeans.index.search(pca_crop, 1)[1].reshape(-1)
             
-            crop_vector = calculate_crop_vector(crop_labels = crop_labels, templates_labels = templates_labels, num_clusters = 2048)
+            crop_vector = calculate_crop_vector(crop_labels = crop_labels, templates_labels = templates_labels, num_clusters = 1024)
             concat_templates_vector = torch.cat([torch.tensor(vector).view(1,-1) for vector in templates_vector]) # Goal torch.Size([642, 2048])
 
             (
@@ -330,7 +331,7 @@ class CNOS(pl.LightningModule):
         print(f"Number of chosen detections before applying nms: {len(detections)}")
         # breakpoint()
         detections.apply_nms_per_object_id(
-            nms_thresh=self.post_processing_config.nms_thresh
+            nms_thresh=0.5 # self.post_processing_config.nms_thresh
         )
 
         matching_stage_end_time = time.time()
