@@ -125,7 +125,7 @@ class CropResizePad:
             processed_images.append(image)
         return torch.stack(processed_images) # so we got num_proposals, 3,224,224 afterwards- basically stacks of proposals
     
-    def process_images_masks(self, images, boxes, target_size_mask=224):
+    def process_images_masks(self, images, boxes, target_size_mask=16):
         """
         Process images and create corresponding masks by cropping, resizing, and padding.
         Images are resized to self.target_size while masks are resized to target_size_mask.

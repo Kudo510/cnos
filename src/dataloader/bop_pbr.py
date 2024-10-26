@@ -69,7 +69,7 @@ class BOPTemplatePBR(BaseBOP):
             ]
         )
         self.proposal_processor = CropResizePad(self.processing_config.image_size)
-        self.proposal_processor_2 = CropResizePad(420) # resize templates as 420 not 224
+        self.proposal_processor_2 = CropResizePad(224) # resize templates as 420 not 224
 
     def __len__(self):
         return len(self.obj_ids)
@@ -232,7 +232,7 @@ class BOPTemplatePBR(BaseBOP):
         templates = torch.stack(templates).permute(0, 3, 1, 2)
         boxes = torch.tensor(np.array(boxes))
         # templates_croped = self.proposal_processor(images=templates, boxes=boxes)
-        templates_croped, templates_masks = self.proposal_processor_2.process_images_masks(images=templates, boxes=boxes, target_size_mask=30)
+        templates_croped, templates_masks = self.proposal_processor_2.process_images_masks(images=templates, boxes=boxes, target_size_mask=16)
 
         # templates_masks shape as 42,224,224
         return {"templates": self.rgb_transform(templates_croped),
@@ -261,7 +261,7 @@ if __name__ == "__main__":
         root_dir="/gpfsscratch/rech/tvi/uyb58rn/datasets/bop23_challenge/datasets/lmo",
         template_dir="/gpfsscratch/rech/tvi/uyb58rn/datasets/bop23_challenge/datasets/templates_pyrender/lmo",
         obj_ids=None,
-        level_templates=1,
+        level_templates=2,
         pose_distribution="all",
         processing_config=processing_config,
     )

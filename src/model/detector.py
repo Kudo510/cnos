@@ -289,7 +289,6 @@ class CNOS(pl.LightningModule):
             _,
             pred_cnos_scores,
         ) = self.find_matched_proposals(query_decriptors)
-        print(f"Number of chosen detections with scores bigger than 0.01: {len(detections)}")
 
         # Building BoW
         # templates_num_valid_patches, templates_valid_patch_features = self.filter_out_invalid_templates()
@@ -298,17 +297,18 @@ class CNOS(pl.LightningModule):
         
         all_valid_patch_features = [torch.cat((valid_crop_feature_patch, self.ref_patch_data["templates_valid_patch_features"]), dim=0) for valid_crop_feature_patch in valid_crop_feature_patches]
 
+
         bow_scores = list()
         proposal_stage_start_time = time.time()
         for i in range(len(all_valid_patch_features)):
-            pca = PCA(n_components=128, random_state=5) # 128 or 256 is just the same
+            pca = PCA(n_components=256, random_state=5) # 128 or 256 is just the same
             pca_crop_patches_descriptors = pca.fit_transform(np.array(all_valid_patch_features[i].cpu()))
 
             pca_crop = pca_crop_patches_descriptors[:valid_crop_feature_patches[i].shape[0]]
             pca_templates = pca_crop_patches_descriptors[valid_crop_feature_patches[i].shape[0]:]
 
             ## Change here from 2048 to 1024
-            num_clusters = 256 # 2048
+            num_clusters = 64 # 2048
             kmeans = self.kmeans_clustering(pca_templates, ncentroids = num_clusters, niter = 20, verbose = True)
             templates_labels = calculate_templates_labels(self.ref_patch_data["templates_num_valid_patches"], kmeans, pca_templates)
             templates_vector = calculate_templates_vector(templates_labels = templates_labels, num_clusters = num_clusters)
@@ -338,7 +338,7 @@ class CNOS(pl.LightningModule):
         # update detections)
         detections.add_attribute("scores", pred_final_scores.cuda())
         detections.filter(selected_proposals_indices)
-
+        print(f"Number of chosen detections with scores bigger than 0.01: {len(detections)}")
         pred_idx_objects = torch.tensor([1]).repeat(len(selected_proposals_indices)) # temperary class 1 for object 1 only
         # detections.add_attribute("scores",(pred_scores+1)/2)
         detections.add_attribute("object_ids", pred_idx_objects)

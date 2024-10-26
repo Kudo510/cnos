@@ -584,6 +584,115 @@ def calculate_templates_vector(templates_labels, num_clusters = 2048):
     return templates_vector
 
 
+from numba import jit
+@jit(nopython=True)
+def calculate_bi_values(occurrences, ni_array, N, num_clusters):
+    """Numba-optimized function to calculate bi values"""
+    nt = occurrences.sum()  # Length of current template
+    if nt == 0:
+        return np.zeros(num_clusters)
+    
+    # Avoid division by zero by adding small epsilon where ni_array is 0
+    ni_safe = np.where(ni_array == 0, 1e-10, ni_array)
+    
+    # Vectorized calculation of bi values
+    bi_values = (occurrences / nt) * np.log(N / ni_safe)
+    return bi_values
+
+# def calculate_templates_vector(templates_labels, num_clusters=2048):
+#     """
+#     Optimized version of template vector calculation using vectorized operations.
+    
+#     Args:
+#         templates_labels: List of numpy arrays containing template labels
+#         num_clusters: Number of clusters (default: 2048)
+    
+#     Returns:
+#         List of numpy arrays containing template vectors
+#     """
+#     # Convert input to numpy array if it isn't already
+#     templates_labels = [np.asarray(tl) for tl in templates_labels]
+    
+#     # Pre-calculate all occurrences using vectorized operations
+#     all_occurrences = np.array([
+#         np.bincount(tl, minlength=num_clusters) 
+#         for tl in templates_labels
+#     ])
+    
+#     # Calculate ni_array (sum of occurrences across all templates)
+#     ni_array = np.sum(all_occurrences, axis=0)
+    
+#     # Number of templates
+#     N = len(templates_labels)
+    
+#     # Calculate template vectors using vectorized operations
+#     templates_vector = [
+#         calculate_bi_values(occurrences, ni_array, N, num_clusters)
+#         for occurrences in all_occurrences
+#     ]
+    
+#     return templates_vector
+
+
+@jit(nopython=True)
+def calculate_bi_values_vectorized(all_occurrences_crop, ni_array, N, nt):
+    """
+    Vectorized calculation of bi values using Numba
+    """
+    # Add crop occurrences to template occurrences for ni calculation
+    ni = ni_array + all_occurrences_crop
+    
+    # Avoid division by zero with a small epsilon
+    ni_safe = np.maximum(ni, 1e-10)
+    
+    # Vectorized calculation
+    bi_values = (all_occurrences_crop / nt) * np.log((N + 1) / ni_safe)
+    
+    return bi_values
+
+# def calculate_crop_vector(crop_labels, templates_labels, num_clusters=2048):
+#     """
+#     Optimized version of crop vector calculation using vectorized operations.
+    
+#     Args:
+#         crop_labels: numpy array of crop labels
+#         templates_labels: list of numpy arrays containing template labels
+#         num_clusters: number of clusters (default: 2048)
+    
+#     Returns:
+#         torch.Tensor of shape (1, num_clusters)
+#     """
+#     # Ensure inputs are numpy arrays
+#     crop_labels = np.asarray(crop_labels)
+#     templates_labels = [np.asarray(tl) for tl in templates_labels]
+    
+#     # Calculate occurrences for crop
+#     all_occurrences_crop = np.bincount(crop_labels, minlength=num_clusters)
+    
+#     # Vectorized calculation of template occurrences
+#     all_occurrences_templates = np.stack([
+#         np.bincount(tl, minlength=num_clusters) 
+#         for tl in templates_labels
+#     ])
+    
+#     # Sum template occurrences
+#     ni_array = np.sum(all_occurrences_templates, axis=0)
+    
+#     # Calculate constants
+#     N = len(templates_labels)  # Number of templates
+#     nt = crop_labels.shape[0]  # Number of words in crop
+    
+#     # Calculate bi values using vectorized function
+#     crop_vector = calculate_bi_values_vectorized(
+#         all_occurrences_crop,
+#         ni_array,
+#         N,
+#         nt
+#     )
+    
+#     # Convert to torch tensor and reshape
+#     return torch.from_numpy(crop_vector).float().reshape(1, -1)
+
 def calculate_crop_vector(crop_labels, templates_labels, num_clusters = 2048):
     # For word_i, term frequency = occurences of word_i within the crop / number of occurences of word_i in all templates). 
     

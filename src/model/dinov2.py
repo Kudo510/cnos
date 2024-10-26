@@ -48,7 +48,7 @@ class CustomDINOv2(pl.LightningModule):
         )
         # use for global feature
         self.rgb_proposal_processor = CropResizePad(self.proposal_size)
-        self.rgb_proposal_processor_2 = CropResizePad(420) # founpose needs 420 not 224
+        self.rgb_proposal_processor_2 = CropResizePad(224) # founpose needs 420 not 224
         self.rgb_resize = CustomResizeLongestSide(
             descriptor_width_size, dividable_size=self.patch_size
         )
@@ -80,7 +80,7 @@ class CustomDINOv2(pl.LightningModule):
         rgbs = rgb.unsqueeze(0).repeat(num_proposals, 1, 1, 1) # 55, 3, 480, 640
         masked_rgbs = rgbs * masks.unsqueeze(1)
         processed_masked_rgbs, processed_masks  = self.rgb_proposal_processor_2.process_images_masks(
-            masked_rgbs, boxes, target_size_mask=30
+            masked_rgbs, boxes, target_size_mask=16
         )  # [N, 3, target_size, target_size]
         return processed_masked_rgbs, processed_masks
     
