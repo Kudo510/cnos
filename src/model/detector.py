@@ -100,7 +100,7 @@ class CNOS(pl.LightningModule):
         Extract pach templates in Founpose for templates
         '''
 
-        self.ref_data = {"patch_descriptors": BatchedData(None)}
+        self.ref_patch_data = {"patch_descriptors": BatchedData(None)}
         for idx in tqdm(
                 range(len(self.ref_dataset)),
                 desc="Computing patch descriptor for FoundPose ...",
@@ -108,10 +108,10 @@ class CNOS(pl.LightningModule):
                 # import pdb; pdb.set_trace()
                 ref_imgs = self.ref_dataset[idx]["templates"].to(self.device)
                 ref_patch_feats = self.descriptor_model.get_intermediate_layers(ref_imgs)
-                self.ref_data["patch_descriptors"].append(ref_patch_feats)
+                self.ref_patch_data["patch_descriptors"].append(ref_patch_feats)
 
-        self.ref_data["patch_descriptors"].stack()  # N_objects x descriptor_size # 
-        self.ref_data["patch_descriptors"] = self.ref_data["patch_descriptors"].data
+        self.ref_patch_data["patch_descriptors"].stack()  # N_objects x descriptor_size # 
+        self.ref_patch_data["patch_descriptors"] = self.ref_patch_data["patch_descriptors"].data
     
     def filter_out_invalid_templates(self):
         self.templates_patch_feature_extraction()
@@ -129,13 +129,14 @@ class CNOS(pl.LightningModule):
             mask = self.ref_dataset[idx]["templates_masks"].reshape(num_template, -1)  #  self.ref_dataset[idx]["templates_masks"] has shape of 42,224,224
             resized_masks.append(mask)
 
-        for patch_feature, mask in zip(self.ref_data["patch_descriptors"][0], resized_masks[0]): # 0 here measn we have only 1 object- or we are doing it jsut for first object only 
+        for patch_feature, mask in zip(self.ref_patch_data["patch_descriptors"][0], resized_masks[0]): # 0 here measn we have only 1 object- or we are doing it jsut for first object only 
             valid_patches = patch_feature[mask==1]
             valid_patch_features.append(valid_patches)
             num_valid_patches.append(valid_patches.shape[0]) # Append number of  valid patches for the template to the list
         valid_patch_features = torch.cat(valid_patch_features)
-        return num_valid_patches, valid_patch_features
 
+        self.ref_patch_data["templates_num_valid_patches"] = num_valid_patches
+        self.ref_patch_data["templates_valid_patch_features"] = valid_patch_features
 
     def move_to_device(self):
         self.descriptor_model.model = self.descriptor_model.model.to(self.device)
@@ -254,6 +255,7 @@ class CNOS(pl.LightningModule):
             )
             self.set_reference_objects()
             self.move_to_device()
+            self.filter_out_invalid_templates()
         assert batch["image"].shape[0] == 1, "Batch size must be 1"
 
         image_np = (
@@ -280,49 +282,61 @@ class CNOS(pl.LightningModule):
         # compute descriptors
         # Use image_np, to conver the bboxes as well as the masks to size of the 224,224
 
+        query_decriptors = self.descriptor_model(image_np, detections) # shape as 56 ,1024 as number of proposals, 1024 as fatures dim from Dinov2
+
+        (
+            _,
+            _,
+            pred_cnos_scores,
+        ) = self.find_matched_proposals(query_decriptors)
+        print(f"Number of chosen detections with scores bigger than 0.01: {len(detections)}")
+
         # Building BoW
-        templates_num_valid_patches, templates_valid_patch_features = self.filter_out_invalid_templates()
+        # templates_num_valid_patches, templates_valid_patch_features = self.filter_out_invalid_templates()
+
+        _ , valid_crop_feature_patches = self.descriptor_model.compute_patch_features(image_np, detections) # valid_crop_feature_patches is a list of num_proposals, each is the valid patches
         
-        crop_num_valid_patches, valid_crop_feature_patches = self.descriptor_model.compute_patch_features(image_np, detections) # valid_crop_feature_patches is a list of num_proposals, each is the valid patches
-        all_valid_patch_features = [torch.cat((valid_crop_feature_patch, templates_valid_patch_features), dim=0) for valid_crop_feature_patch in valid_crop_feature_patches]
+        all_valid_patch_features = [torch.cat((valid_crop_feature_patch, self.ref_patch_data["templates_valid_patch_features"]), dim=0) for valid_crop_feature_patch in valid_crop_feature_patches]
 
         bow_scores = list()
         proposal_stage_start_time = time.time()
         for i in range(len(all_valid_patch_features)):
-            pca = PCA(n_components=256, random_state=5)
+            pca = PCA(n_components=128, random_state=5) # 128 or 256 is just the same
             pca_crop_patches_descriptors = pca.fit_transform(np.array(all_valid_patch_features[i].cpu()))
 
             pca_crop = pca_crop_patches_descriptors[:valid_crop_feature_patches[i].shape[0]]
             pca_templates = pca_crop_patches_descriptors[valid_crop_feature_patches[i].shape[0]:]
 
             ## Change here from 2048 to 1024
-            kmeans = self.kmeans_clustering(pca_templates, ncentroids = 1024, niter = 10, verbose = True)
-            templates_labels = calculate_templates_labels(templates_num_valid_patches, kmeans, pca_templates)
-            templates_vector = calculate_templates_vector(templates_labels = templates_labels, num_clusters = 1024)
+            num_clusters = 256 # 2048
+            kmeans = self.kmeans_clustering(pca_templates, ncentroids = num_clusters, niter = 20, verbose = True)
+            templates_labels = calculate_templates_labels(self.ref_patch_data["templates_num_valid_patches"], kmeans, pca_templates)
+            templates_vector = calculate_templates_vector(templates_labels = templates_labels, num_clusters = num_clusters)
 
             # Assign labels to the data points
             crop_labels = kmeans.index.search(pca_crop, 1)[1].reshape(-1)
             
-            crop_vector = calculate_crop_vector(crop_labels = crop_labels, templates_labels = templates_labels, num_clusters = 1024)
-            concat_templates_vector = torch.cat([torch.tensor(vector).view(1,-1) for vector in templates_vector]) # Goal torch.Size([642, 2048])
+            crop_vector = calculate_crop_vector(crop_labels = crop_labels, templates_labels = templates_labels, num_clusters = num_clusters)
+            concat_templates_vector = torch.from_numpy(np.stack(templates_vector, axis=0)).float()  # Will be shape [42, 1024]
 
             (
                 _,
                 _,
-                pred_scores,
+                pred_bow_scores,
             ) = self.find_matched_proposals_2(crop_vector, concat_templates_vector.unsqueeze(0))
-            bow_scores.append(pred_scores)
+            bow_scores.append(pred_bow_scores)
 
+        pred_final_scores = (pred_cnos_scores.cpu() + torch.tensor(bow_scores))/2
         proposal_stage_end_time = time.time()
         print(f"Calculating time per test image {proposal_stage_end_time-proposal_stage_start_time}")
         
-        selected_proposals_indices = [i for i, a_s in enumerate(bow_scores) if a_s >0.01]
-        selected_proposals_scores = [a_s for i, a_s in enumerate(bow_scores) if a_s >0.01]
+        selected_proposals_indices = [i for i, a_s in enumerate(pred_final_scores) if a_s >0.01]
+        # selected_proposals_scores = [a_s for i, a_s in enumerate(bow_scores) if a_s >0.01]
         # matching descriptors
         matching_stage_start_time = time.time()
 
-        # update detections
-        detections.add_attribute("scores", torch.tensor(bow_scores).cuda())
+        # update detections)
+        detections.add_attribute("scores", pred_final_scores.cuda())
         detections.filter(selected_proposals_indices)
 
         pred_idx_objects = torch.tensor([1]).repeat(len(selected_proposals_indices)) # temperary class 1 for object 1 only
@@ -331,7 +345,7 @@ class CNOS(pl.LightningModule):
         print(f"Number of chosen detections before applying nms: {len(detections)}")
         # breakpoint()
         detections.apply_nms_per_object_id(
-            nms_thresh=0.5 # self.post_processing_config.nms_thresh
+            nms_thresh= self.post_processing_config.nms_thresh
         )
 
         matching_stage_end_time = time.time()
@@ -361,7 +375,7 @@ class CNOS(pl.LightningModule):
             file_path=file_path,
             dataset_name=self.dataset_name,
             return_results=True,
-        )
+        ) 
         # save runtime to file
         np.savez(
             file_path + "_runtime",
