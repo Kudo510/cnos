@@ -18,6 +18,16 @@ import multiprocessing
 from src.model.foundpose import resize_and_pad_image
 from sklearn.decomposition import PCA
 import faiss
+import os
+from copy import deepcopy
+import torch
+import cv2
+import numpy as np
+import matplotlib.cm as cm
+from src_eloftr.utils.plotting import make_matching_figure
+from src_eloftr.loftr import LoFTR, full_default_cfg, opt_default_cfg, reparameter
+from PIL import Image
+from src_eloftr.custom_utils import extract_correspondences
 
 from src.model.foundpose import calculate_templates_labels, calculate_templates_vector, calculate_crop_vector
 
@@ -42,6 +52,19 @@ class CNOS(pl.LightningModule):
         self.post_processing_config = post_processing_config
         self.log_interval = log_interval
         self.log_dir = log_dir
+
+        # loead eloftr matcher
+        model_type = 'full' # 'full' for best quality, 'opt' for best efficiency
+        precision = 'fp16' # Enjoy near-lossless precision with Mixed Precision (MP) / FP16 computation if you have a modern GPU (recommended NVIDIA architecture >= SM_70).
+        _default_cfg = deepcopy(full_default_cfg)
+        _default_cfg['half'] = True
+            
+        # print(_default_cfg)
+        matcher = LoFTR(config=_default_cfg)
+        matcher.load_state_dict(torch.load("src_eloftr/weights/eloftr_outdoor.ckpt")['state_dict'])
+        matcher = reparameter(matcher) # no reparameterization will lead to low performance
+        matcher = matcher.half()
+        self.matcher = matcher.eval().cuda()
 
         os.makedirs(self.log_dir, exist_ok=True)
         os.makedirs(osp.join(self.log_dir, "predictions"), exist_ok=True)
@@ -200,22 +223,23 @@ class CNOS(pl.LightningModule):
         scores = self.matching_config.metric(
             proposal_decriptors, templates_descriptors
         )  # N_proposals x N_objects x N_templates
-        if self.matching_config.aggregation_function == "mean":
-            score_per_proposal_and_object = (
-                torch.sum(scores, dim=-1) / scores.shape[-1]
-            )  # N_proposals x N_objects
-        elif self.matching_config.aggregation_function == "median":
-            score_per_proposal_and_object = torch.median(scores, dim=-1)[0]
-        elif self.matching_config.aggregation_function == "max":
-            score_per_proposal_and_object = torch.max(scores, dim=-1)[0]
-        elif self.matching_config.aggregation_function == "avg_5":      ## our case
-            score_per_proposal_and_object = torch.topk(scores, k=5, dim=-1)[0]
-            score_per_proposal_and_object = torch.mean( # N_proposals x N_objects
-                score_per_proposal_and_object, dim=-1
-            )
-        else:
-            raise NotImplementedError
+        # if self.matching_config.aggregation_function == "mean":
+        #     score_per_proposal_and_object = (
+        #         torch.sum(scores, dim=-1) / scores.shape[-1]
+        #     )  # N_proposals x N_objects
+        # elif self.matching_config.aggregation_function == "median":
+        #     score_per_proposal_and_object = torch.median(scores, dim=-1)[0]
+        # elif self.matching_config.aggregation_function == "max":
+        #     score_per_proposal_and_object = torch.max(scores, dim=-1)[0]
+        # elif self.matching_config.aggregation_function == "avg_5":      ## our case
+        score_per_proposal_and_object, best_indices = torch.topk(scores, k=5, dim=-1)
+        score_per_proposal_and_object = torch.mean( # N_proposals x N_objects
+            score_per_proposal_and_object, dim=-1
+        )
+        # else:
+        #     raise NotImplementedError
 
+        # score_per_proposal_and_object = torch.max(scores, dim=-1)[0]
         # assign each proposal to the object with highest scores
         score_per_proposal, assigned_idx_object = torch.max(
             score_per_proposal_and_object, dim=-1
@@ -223,10 +247,10 @@ class CNOS(pl.LightningModule):
 
         idx_selected_proposals = torch.arange(
             len(score_per_proposal), device=score_per_proposal.device
-        )# [score_per_proposal > self.matching_config.confidence_thresh]
-        pred_idx_objects = assigned_idx_object[idx_selected_proposals]
+        )[score_per_proposal > self.matching_config.confidence_thresh]
+        # pred_idx_objects = assigned_idx_object[idx_selected_proposals]
         pred_scores = score_per_proposal[idx_selected_proposals]
-        return idx_selected_proposals, pred_idx_objects, pred_scores 
+        return best_indices[0][0], pred_scores 
     
 
     def kmeans_clustering(self, pca_patches_descriptors, ncentroids = 2048, niter = 20, verbose = True):
@@ -237,7 +261,7 @@ class CNOS(pl.LightningModule):
         kmeans.train(pca_patches_descriptors)
         return kmeans
 
-    def test_step(self, batch, idx): # idx = 0
+    def test_step_foundpose(self, batch, idx): # idx = 0
         '''
         batch is a dict of 'image', 'scene_id', 'frame_id'
         batch["image"] with shape of batch_size, 3, H,W 
@@ -291,7 +315,6 @@ class CNOS(pl.LightningModule):
         ) = self.find_matched_proposals(query_decriptors)
 
         # Building BoW
-        # templates_num_valid_patches, templates_valid_patch_features = self.filter_out_invalid_templates()
 
         _ , valid_crop_feature_patches = self.descriptor_model.compute_patch_features(image_np, detections) # valid_crop_feature_patches is a list of num_proposals, each is the valid patches
         
@@ -300,7 +323,9 @@ class CNOS(pl.LightningModule):
 
         bow_scores = list()
         proposal_stage_start_time = time.time()
-        for i in range(len(all_valid_patch_features)):
+        for i in range(9, len(all_valid_patch_features)):
+            # display/save the crops here:
+
             pca = PCA(n_components=256, random_state=5) # 128 or 256 is just the same
             pca_crop_patches_descriptors = pca.fit_transform(np.array(all_valid_patch_features[i].cpu()))
 
@@ -320,13 +345,13 @@ class CNOS(pl.LightningModule):
             concat_templates_vector = torch.from_numpy(np.stack(templates_vector, axis=0)).float()  # Will be shape [42, 1024]
 
             (
-                _,
-                _,
+                best_templates_indices,
                 pred_bow_scores,
             ) = self.find_matched_proposals_2(crop_vector, concat_templates_vector.unsqueeze(0))
             bow_scores.append(pred_bow_scores)
 
         pred_final_scores = (pred_cnos_scores.cpu() + torch.tensor(bow_scores))/2
+        # pred_final_scores = pred_cnos_scores.cpu()
         proposal_stage_end_time = time.time()
         print(f"Calculating time per test image {proposal_stage_end_time-proposal_stage_start_time}")
         
@@ -524,6 +549,137 @@ class CNOS(pl.LightningModule):
         )
         return 0
     
+
+    def test_step(self, batch, idx): # idx = 0
+        '''
+        batch is a dict of 'image', 'scene_id', 'frame_id'
+        batch["image"] with shape of batch_size, 3, H,W 
+            here: [1, 3, 480, 640])
+            also 10* batch_size must be 1
+        '''
+        print("Path of input image:", batch["rgb_path"][0])
+        if idx == 0:
+            os.makedirs(
+                osp.join(
+                    self.log_dir,
+                    f"predictions/{self.dataset_name}/{self.name_prediction_file}", #self.name_prediction_file: CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin
+                ),
+                exist_ok=True,
+            )
+            self.set_reference_objects()
+            self.move_to_device()
+        assert batch["image"].shape[0] == 1, "Batch size must be 1"
+
+        image_np = (
+            self.inv_rgb_transform(batch["image"][0]) # just to get the image in the batch - return shape of 3, 480, 640
+            .cpu()
+            .numpy()
+            .transpose(1, 2, 0)
+        ) # 480, 640, 3
+        image_np = np.uint8(image_np.clip(0, 1) * 255) # turn back as normal image
+
+        # run propoals
+        proposal_stage_start_time = time.time()
+        proposals = self.segmentor_model.generate_masks(image_np) # a dict of 'masks', 'boxes')
+        print(f"Number of sam proposals: {proposals['masks'].shape}")
+
+        # init detections with masks and boxes
+        detections = Detections(proposals) # just turn the dict to a class thoi- still keys as masks, boxes
+        print(f"Number of sam proposals: -rechecked {len(detections)}")
+        detections.remove_very_small_detections(
+            config=self.post_processing_config.mask_post_processing
+        )
+        print(f"Number of detections after removing all small proposals: {len(detections)}")
+        # compute descriptors
+        # Use image_np, to conver the bboxes as well as the masks to size of the 224,224
+        query_decriptors = self.descriptor_model(image_np, detections) # shape as 56 ,1024 as number of proposals, 1024 as fatures dim from Dinov2
+        proposal_stage_end_time = time.time()
+
+        # matching descriptors
+        matching_stage_start_time = time.time()
+        (
+            idx_selected_proposals,
+            pred_idx_objects,
+            pred_scores,
+        ) = self.find_matched_proposals(query_decriptors)
+        print(f"Number of chosen detections with scores bigger than 0.01: {len(detections)}")
+
+        # update detections
+        detections.filter(idx_selected_proposals)
+        detections.add_attribute("scores", pred_scores)
+        # detections.add_attribute("scores",(pred_scores+1)/2)
+        detections.add_attribute("object_ids", pred_idx_objects)
+        print(f"Number of chosen detections before applying nms: {len(detections)}")
+        # breakpoint()
+
+        #apply eloftr
+        num_corres_list = list()
+        crops = self.descriptor_model.process_rgb_proposals_3(image_np, detections.masks, detections.boxes)
+        # templates = self.ref_dataset[0]["unnormalized_templates"]
+
+        # for crop in crops:
+        #     num_corres_temp_list = np.array(
+        #         [extract_correspondences(crop, temp.cuda(), matcher=self.matcher, precision='fp16', model_type = 'full') for temp in self.ref_dataset[0]["unnormalized_templates"]]
+        #                                      )
+        #     top5_average = sum(sorted(num_corres_temp_list)[-5:]) / 5
+        #     print(f"max num correpodences: {max(num_corres_temp_list)}")
+        #     print(f"top 5 average num correpodences: {top5_average}")
+        #     num_corres_list.append(top5_average)
+
+        for temp in  tqdm(self.ref_dataset[0]["unnormalized_templates"], desc="Running Eloftr"):
+            num_corres_temp_list = np.array(
+                [extract_correspondences(crop, temp.cuda(), matcher=self.matcher, precision='fp16', model_type = 'full') for crop in crops]
+                                 )
+            num_corres_list.append(num_corres_temp_list)
+        
+        num_corres_list = np.stack(num_corres_list)
+        top5_averages = np.mean(np.sort(num_corres_list, axis=0)[-5:, :], axis=0)  # Shape: (101,)    
+        new_pred_scores = torch.tensor(top5_averages).cuda() / (np.max(top5_averages) + 1)  
+        # new_pred_scores = (torch.tensor(num_corres_list).cuda())/(max(num_corres_list)+1)
+        assert len(new_pred_scores)==len(detections)
+        detections.scores = new_pred_scores
+
+        # input for eloftr - 1, 1, H,W as gray images- the value also need to dvide by 255.0 - as 
+
+        detections.apply_nms_per_object_id(
+            nms_thresh=self.post_processing_config.nms_thresh
+        )
+        print(f"Number of chosen detections after applying nms: {len(detections)}")
+
+
+        matching_stage_end_time = time.time()
+        print("time per image: ", matching_stage_end_time - matching_stage_start_time)
+        runtime = (
+            proposal_stage_end_time
+            - proposal_stage_start_time
+            + matching_stage_end_time
+            - matching_stage_start_time
+        )
+        detections.to_numpy()
+
+        scene_id = batch["scene_id"][0]
+        frame_id = batch["frame_id"][0]
+        file_path = osp.join(
+            self.log_dir,
+            f"predictions/{self.dataset_name}/{self.name_prediction_file}/scene{scene_id}_frame{frame_id}",
+        )
+
+        # save detections to file
+        results = detections.save_to_file(
+            scene_id=int(scene_id),
+            frame_id=int(frame_id),
+            runtime=runtime,
+            file_path=file_path,
+            dataset_name=self.dataset_name,
+            return_results=True,
+        )
+        # save runtime to file
+        np.savez(
+            file_path + "_runtime",
+            proposal_stage=proposal_stage_end_time - proposal_stage_start_time,
+            matching_stage=matching_stage_end_time - matching_stage_start_time,
+        )
+        return 0
 
 
     def custom_test_step(self, batch, idx): # just remove 0 zB at batch["image"][0]  # idx = 0
