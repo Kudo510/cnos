@@ -15,7 +15,7 @@ ffmpeg
 hydra-colorlog
 hydra-core
 gdown
-# pytorch-lightning==1.8.1
+# pytorch-lightning==1.8.6
 pandas
 ruamel.yaml
 pyrender

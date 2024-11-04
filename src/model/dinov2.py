@@ -46,9 +46,15 @@ class CustomDINOv2(pl.LightningModule):
                 T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ]
         )
+        
+        self.rgb_normalize_2 = T.Compose(
+            [
+                T.ToTensor()            
+            ]
+        )
         # use for global feature
         self.rgb_proposal_processor = CropResizePad(self.proposal_size)
-        self.rgb_proposal_processor_2 = CropResizePad(224) # founpose needs 420 not 224
+        self.rgb_proposal_processor_2 = CropResizePad(420) # founpose needs 420 not 224
         self.rgb_resize = CustomResizeLongestSide(
             descriptor_width_size, dividable_size=self.patch_size
         )
@@ -70,6 +76,21 @@ class CustomDINOv2(pl.LightningModule):
             masked_rgbs, boxes
         )  # [N, 3, target_size, target_size]
         return processed_masked_rgbs
+    
+    def process_rgb_proposals_3(self, image_np, masks, boxes):
+        """
+        same as process_rgb_proposals just that the rgbs are not normalized just converted to tensor
+        remmber output images is divided by 255.0 already
+        """
+        num_proposals = len(masks) # masks shape 55, 480, 640]
+        rgb = self.rgb_normalize_2(image_np).to(masks.device).float() # nomralize the image - 3,480, 640
+        rgbs = rgb.unsqueeze(0).repeat(num_proposals, 1, 1, 1) # 55, 3, 480, 640
+        masked_rgbs = rgbs * masks.unsqueeze(1)
+        processed_masked_rgbs = self.rgb_proposal_processor(
+            masked_rgbs, boxes
+        )  # [N, 3, target_size, target_size] but value is divided by 255.0 - so need to covnert back to original images
+        return processed_masked_rgbs #*255.0.clamp(0,255).to(torch.unit8)
+    
 
     def process_rgb_proposals_2(self, image_np, masks, boxes):
         """
@@ -80,7 +101,7 @@ class CustomDINOv2(pl.LightningModule):
         rgbs = rgb.unsqueeze(0).repeat(num_proposals, 1, 1, 1) # 55, 3, 480, 640
         masked_rgbs = rgbs * masks.unsqueeze(1)
         processed_masked_rgbs, processed_masks  = self.rgb_proposal_processor_2.process_images_masks(
-            masked_rgbs, boxes, target_size_mask=16
+            masked_rgbs, boxes, target_size_mask=30
         )  # [N, 3, target_size, target_size]
         return processed_masked_rgbs, processed_masks
     

@@ -21,6 +21,28 @@ lmo_object_ids = np.array(
     ]
 )  # object ID of occlusionLINEMOD is different
 
+def save_tensor_image(rgb, save_path):
+    '''
+    rgb is tensor rgb gpu image, shape as 3, H, W. it is also divided by 255.0 beforehand, and type is float32 not unint8 
+    '''
+    Image.fromarray((rgb.cpu().permute(1, 2, 0).numpy() * 255).clip(0, 255).astype(np.uint8)).save(save_path)
+
+
+def rgb_to_grayscale_pytorch(rgb_tensor): 
+    '''
+    rgb_tensor shape as 3, H, W not dived by 255.0 and normalized
+    '''
+    # Define weights for the RGB channels
+    weights = torch.tensor([0.299, 0.587, 0.114], device=rgb_tensor.device)
+    
+    # Ensure the tensor is in shape (batch_size, channels, height, width) or (channels, height, width)
+    if rgb_tensor.dim() == 3:  # Single image
+        grayscale_tensor = (rgb_tensor * weights[:, None, None]).sum(0)
+    elif rgb_tensor.dim() == 4:  # Batch of images
+        grayscale_tensor = (rgb_tensor * weights[None, :, None, None]).sum(1)
+    
+    return grayscale_tensor # as batch of images N, H, W or single image H, W
+
 
 def mask_to_rle(binary_mask):
     rle = {"counts": [], "size": list(binary_mask.shape)}

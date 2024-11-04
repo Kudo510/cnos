@@ -1,3 +1,10 @@
+# Install
+    conda install -c pytorch -c nvidia faiss-gpu=1.9.0
+    conda install anaconda::scikit-learn
+    conda install anaconda::scikit-image
+    conda install numba
+    conda install pandas==2.1.1
+
 # Files
     foundpose_3.ipynb - full pipeline for foundpose 
     foundpose_check_code.ipynb - check feaures extraction from dinov2d
@@ -79,7 +86,7 @@ Testing on BOP dataset-
         python run_inference.py dataset_name=$DATASET_NAME model=cnos_fast
 
     with SAM + pyrender # achtung for itodd the last 2 models 27, 28 has a problem- remove the tempalets if wan to test on the dataset
-        python run_inference.py dataset_name=itodd model.onboarding_config.rendering_type=pyrender 
+        python run_inference.py dataset_name=icbin model.onboarding_config.rendering_type=pyrender 
         # dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender
 
     with SAM + PBR # remmber use the original bop_pbr.py

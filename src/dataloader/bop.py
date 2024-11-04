@@ -81,6 +81,7 @@ class BOPTemplate(Dataset):
             masks_cropped = self.proposal_processor(images=masks, boxes=boxes)
             return {
                 "templates": self.rgb_transform(templates_croped),
+                "unnormalized_templates": templates_croped,
                 "template_masks": masks_cropped[:, 0, :, :],
             }
 

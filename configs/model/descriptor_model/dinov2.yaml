@@ -1,5 +1,5 @@
   _target_: src.model.dinov2.CustomDINOv2
-  model_name: dinov2_vitl14
+  model_name: dinov2_vitl14_reg
   model: 
     _target_: torch.hub.load
     repo_or_dir: facebookresearch/dinov2

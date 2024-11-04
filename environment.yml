@@ -1,4 +1,4 @@
-name: cnos
+name: cnos_2
 channels:
   - xformers
   - pytorch
@@ -9,6 +9,7 @@ dependencies:
   - pip
   - python=3.9
   - pip:
+    - numpy==1.26.4
     - torch
     - torchvision
     - omegaconf
@@ -26,10 +27,15 @@ dependencies:
     - hydra-colorlog
     - hydra-core
     - gdown
-    # - pytorch-lightning==1.8.1
+    - pytorch-lightning==1.8.6
     - pandas
     - ruamel.yaml
     - pyrender
     - wandb
     - distinctipy
+    - einops==0.3.0
+    - kornia==0.4.1
+    - ray>=1.0.1
+    - loguru==0.5.3
+    - yacs>=0.1.8
 # bop https://github.com/thodan/bop_toolkit.git

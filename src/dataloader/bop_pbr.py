@@ -232,10 +232,11 @@ class BOPTemplatePBR(BaseBOP):
         templates = torch.stack(templates).permute(0, 3, 1, 2)
         boxes = torch.tensor(np.array(boxes))
         # templates_croped = self.proposal_processor(images=templates, boxes=boxes)
-        templates_croped, templates_masks = self.proposal_processor_2.process_images_masks(images=templates, boxes=boxes, target_size_mask=16)
+        templates_croped, templates_masks = self.proposal_processor_2.process_images_masks(images=templates, boxes=boxes, target_size_mask=30)
 
         # templates_masks shape as 42,224,224
         return {"templates": self.rgb_transform(templates_croped),
+                "unnormalized_templates": templates_croped,
                 "templates_masks": templates_masks}
 
 

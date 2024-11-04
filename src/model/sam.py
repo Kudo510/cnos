@@ -59,6 +59,7 @@ class CustomSamAutomaticMaskGenerator(SamAutomaticMaskGenerator):
         box_nms_thresh: float = 0.7,
         crop_overlap_ratio: float = 512 / 1500,
         segmentor_width_size=640,
+        pred_iou_thresh: float = 0.88,
     ):
         SamAutomaticMaskGenerator.__init__(
             self,
@@ -68,6 +69,7 @@ class CustomSamAutomaticMaskGenerator(SamAutomaticMaskGenerator):
             stability_score_thresh=stability_score_thresh,
             box_nms_thresh=box_nms_thresh,
             crop_overlap_ratio=crop_overlap_ratio,
+            pred_iou_thresh=pred_iou_thresh
         )
         self.segmentor_width_size = segmentor_width_size
         logging.info(f"Init CustomSamAutomaticMaskGenerator done!")
