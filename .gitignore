@@ -198,3 +198,4 @@ contrastive_learning/
 cnos_analysis/output_npz
 xoa_out_dir/
 evaluations/output_masks/
+src_eloftr/weights
