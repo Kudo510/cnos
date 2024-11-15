@@ -164,6 +164,7 @@ class Detections:
             
             for key in self.keys:
                 setattr(self, key, getattr(self, key)[keep_idxs])
+        return keep_idxs
 
     def apply_nms(self, nms_thresh=0.5):       
         keep_idx = torchvision.ops.nms(
@@ -275,7 +276,7 @@ class Detections:
         results = {
             "scene_id": scene_id,
             "image_id": frame_id,
-            "category_id": self.object_ids + 1
+            "category_id": self.object_ids 
             if dataset_name != "lmo"
             else lmo_object_ids[self.object_ids],
             "score": self.scores,

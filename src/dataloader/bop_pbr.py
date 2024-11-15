@@ -172,7 +172,7 @@ class BOPTemplatePBR(BaseBOP):
             ):
                 selected_index_obj = index_dataframe[self.metaData["obj_id"] == obj_id]
                 # subsample a bit if there are too many frames
-                selected_index_obj = np.random.choice(selected_index_obj, 5000)
+                selected_index_obj = np.random.choice(selected_index_obj, 500)
                 obj_poses = np.array(
                     self.metaData.iloc[selected_index_obj].obj_poses.tolist()
                 )

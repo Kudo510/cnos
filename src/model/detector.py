@@ -28,7 +28,7 @@ from src_eloftr.utils.plotting import make_matching_figure
 from src_eloftr.loftr import LoFTR, full_default_cfg, opt_default_cfg, reparameter
 from PIL import Image
 from src_eloftr.custom_utils import extract_correspondences
-from src.model.utils import get_pixel_counts
+# from src.model.utils import get_pixel_counts
 from src.model.foundpose import calculate_templates_labels, calculate_templates_vector, calculate_crop_vector
 import torchvision.utils as vutils
 import torchvision.transforms as transforms
@@ -270,7 +270,7 @@ class CNOS(pl.LightningModule):
         # elif self.matching_config.aggregation_function == "max":
         #     score_per_proposal_and_object = torch.max(scores, dim=-1)[0]
         # elif self.matching_config.aggregation_function == "avg_5":      ## our case
-        score_per_proposal_and_object, best_indices = torch.topk(scores, k=5, dim=-1)
+        score_per_proposal_and_object, best_indices = torch.topk(scores, k=3, dim=-1)
         score_per_proposal_and_object = torch.mean( # N_proposals x N_objects
             score_per_proposal_and_object, dim=-1
         )
@@ -347,12 +347,28 @@ class CNOS(pl.LightningModule):
         query_decriptors = self.descriptor_model(image_np, detections) # shape as 56 ,1024 as number of proposals, 1024 as fatures dim from Dinov2
 
         (
-            _,
+            idx_selected_proposals,
             _,
             pred_cnos_scores,
             _,
             _
         ) = self.find_matched_proposals(query_decriptors)
+
+        # # update detections)
+        detections.add_attribute("scores", pred_cnos_scores.cuda())
+        # detections.filter(idx_selected_proposals)
+        # print(f"Number of chosen detections with scores bigger than 0.01: {len(detections)}")
+        # pred_idx_objects = torch.tensor([1]).repeat(len(idx_selected_proposals)) # temperary class 1 for object 1 only
+        # # detections.add_attribute("scores",(pred_scores+1)/2)
+        # detections.add_attribute("object_ids", pred_idx_objects)
+        # print(f"Number of chosen detections before applying nms: {len(detections)}")
+        # # breakpoint()
+        # keep_idx = detections.apply_nms_per_object_id(
+        #     nms_thresh= self.post_processing_config.nms_thresh
+        # )
+        # print(f"Number of chosen detections after applying nms: {len(detections)}")
+
+
 
         # Building BoW
 
@@ -360,10 +376,11 @@ class CNOS(pl.LightningModule):
         
         all_valid_patch_features = [torch.cat((valid_crop_feature_patch, self.ref_patch_data["templates_valid_patch_features"]), dim=0) for valid_crop_feature_patch in valid_crop_feature_patches]
 
-        crops = self.descriptor_model.process_rgb_proposals_3(image_np, detections.masks, detections.boxes)
-        templates = self.ref_dataset[0]["unnormalized_templates"]
+        # crops = self.descriptor_model.process_rgb_proposals_3(image_np, detections.masks, detections.boxes)
+        # templates = self.ref_dataset[0]["unnormalized_templates"]
 
         bow_scores = list()
+        # final_bow_scores = list()
         proposal_stage_start_time = time.time()
         for i in range(0, len(all_valid_patch_features)):
             # display/save the crops here:
@@ -385,15 +402,25 @@ class CNOS(pl.LightningModule):
             concat_templates_vector = torch.from_numpy(np.stack(templates_vector, axis=0)).float()  # Will be shape [42, 1024]
 
             (
-                best_templates_indices,
+                _,
                 pred_bow_scores,
             ) = self.find_matched_proposals_2(crop_vector, concat_templates_vector.unsqueeze(0))
+
+            # final_crop_vector = torch.cat((query_decriptors[i].unsqueeze(0), crop_vector.cuda()), dim=-1)
+            # final_template_vector = torch.cat((self.ref_data["descriptors"], concat_templates_vector.unsqueeze(0).cuda()), dim=-1)
+
+            # (
+            #     _,
+            #     final_pred_bow_scores,
+            # ) = self.find_matched_proposals_2(torch.cat((query_decriptors[i].unsqueeze(0), crop_vector.cuda()), dim=-1), torch.cat((self.ref_data["descriptors"], concat_templates_vector.unsqueeze(0).cuda()), dim=-1))
             bow_scores.append(pred_bow_scores)
+            # final_bow_scores.append(final_pred_bow_scores)
 
-            save_selected_images(templates, best_templates_indices,f"foundpose_analysis_2/banjinjia/{i}_best_templates" )
-            save_selected_images(crops, i,f"foundpose_analysis_2/banjinjia/{i}_crop" )
-
+            # save_selected_images(templates, best_templates_indices,f"foundpose_analysis_2/banjinjia/{i}_best_templates" )
+            # save_selected_images(crops, i,f"foundpose_analysis_2/banjinjia/{i}_crop" )
+        
         pred_final_scores = (pred_cnos_scores.cpu() + torch.tensor(bow_scores))/2
+        # pred_final_scores = torch.tensor(final_bow_scores)
         # pred_final_scores = pred_cnos_scores.cpu()
         proposal_stage_end_time = time.time()
         print(f"Calculating time per test image {proposal_stage_end_time-proposal_stage_start_time}")
@@ -403,8 +430,9 @@ class CNOS(pl.LightningModule):
         # matching descriptors
         matching_stage_start_time = time.time()
 
+
         # update detections)
-        detections.add_attribute("scores", pred_final_scores.cuda())
+        detections.scores = pred_final_scores.cuda()
         detections.filter(selected_proposals_indices)
         print(f"Number of chosen detections with scores bigger than 0.01: {len(detections)}")
         pred_idx_objects = torch.tensor([1]).repeat(len(selected_proposals_indices)) # temperary class 1 for object 1 only
@@ -417,6 +445,9 @@ class CNOS(pl.LightningModule):
         )
 
         matching_stage_end_time = time.time()
+
+        del pred_final_scores
+        torch.cuda.empty_cache()
 
         print(f"Number of chosen detections after applying nms: {len(detections)}")
 
@@ -794,8 +825,8 @@ class CNOS(pl.LightningModule):
         num_corres_list = list()
         crops = self.descriptor_model.process_rgb_proposals_3(image_np, detections.masks, detections.boxes)
         # templates = self.ref_dataset[0]["unnormalized_templates"]
-        crops_valid_pixel_list = get_pixel_counts(crops)
-        templates_valid_pixel_list = get_pixel_counts(self.ref_dataset[0]["unnormalized_templates"])
+        # crops_valid_pixel_list = get_pixel_counts(crops)
+        # templates_valid_pixel_list = get_pixel_counts(self.ref_dataset[0]["unnormalized_templates"])
 
         # for crop in crops:
         #     num_corres_temp_list = np.array(

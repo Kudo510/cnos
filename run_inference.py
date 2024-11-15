@@ -4,6 +4,8 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from hydra.utils import instantiate
 from torch.utils.data import DataLoader
+import os
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="run_inference")

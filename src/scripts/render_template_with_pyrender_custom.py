@@ -60,14 +60,26 @@ def render(cfg: DictConfig) -> None:
 
     
     for dataset_name in [
-        # "tless",
-        # "tudl",
-        "hudiebanjin",
-        # "itodd",
-        # "hb",
-        # "ycbv",
-        # "lmo",
-    ]:
+                "qiuxiao",
+                "neixinlun",
+                "neixinlun2",
+                "zhouchengquan",
+                "hudiejian",
+                # "daoliuzhao",
+                # "banjinjia",
+                "liangan",
+                "diaohuanluoshuan",
+                "yuanguan",
+                "lianjiejian",
+                # "hudiebanjin",
+                "banjinjianlong",
+                "zhijiaobanjin",
+                "jingjiagongjian",
+                "jiaojieyuanguan",
+                "ganqiuxiao",
+                "fanguangzhao",
+                "lungufanlan"
+            ]:
         dataset_save_dir = osp.join(root_save_dir, dataset_name) # ...templates_pyrender/dataset_name
         logging.info(f"Rendering templates for {dataset_name}")
         os.makedirs(dataset_save_dir, exist_ok=True)
@@ -77,7 +89,7 @@ def render(cfg: DictConfig) -> None:
         if dataset_name in ["tless"]:
             cad_dir = os.path.join(cfg.data.root_dir, dataset_name, "models/models_cad")
         else:
-            cad_dir = "datasets/bop23_challenge/datasets/hudiebanjin/models" ## change here to models_eval to render from real 3d models
+            cad_dir = f"datasets/bop23_challenge/datasets/{dataset_name}/models" ## change here to models_eval to render from real 3d models
         cad_paths = []
         output_dirs = []
         object_ids = sorted(
