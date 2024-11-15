@@ -128,14 +128,37 @@ Testing on custom image
             pbr_train: hudiebanjin_train_pbr.zip
             obj_names: [001_hudiebanjin]
     then render templates using pyrender lb
-        python -m src.scripts.render_template_with_pyrender_custom level=2 # adjust the path to the models file of the dataset in the script- this one cad_dir and dataset_name
+        python -m src.scripts.render_template_with_pyrender_custom level=0 # adjust the path to the models file of the dataset in the script- this one cad_dir and dataset_name
     
     then to infer
         export DATASET_NAME=hudiebanjin # icbin 
         HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=hudiebanjin model.onboarding_config.rendering_type=pyrender 
             HYDRA_FULL_ERROR=1  to show full error with for hydra
 
-        HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=daoliuzhao
+        HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=qiuxiao
+
+        dataset_name_list =[
+                "qiuxiao",
+                "neixinlun",
+                "neixinlun2",
+                "zhouchengquan",
+                "hudiejian",
+                # "daoliuzhao",
+                # "banjinjia",
+                "liangan",
+                "diaohuanluoshuan",
+                "yuanguan",
+                "lianjiejian",
+                # "hudiebanjin",
+                "banjinjianlong",
+                "zhijiaobanjin",
+                "jingjiagongjian",
+                "jiaojieyuanguan",
+                "ganqiuxiao",
+                "fanguangzhao",
+                "lungufanlan"
+            ]
+            
     to visualize
             export DATASET_NAME=hudiebanjin 
             export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_hudiebanjin.json

@@ -6,7 +6,7 @@ reference_dataloader:
   _target_: src.dataloader.bop.BOPTemplate
   obj_ids:
   template_dir: ${machine.root_dir}/datasets/
-  level_templates: 0
+  level_templates: 1
   pose_distribution: all
   processing_config:
     image_size: ${model.descriptor_model.image_size}
@@ -80,21 +80,6 @@ datasets:
     test: icbin_test_bop19.zip
     pbr_train: icbin_train_pbr.zip
     obj_names: [001_blue_cup, 002_blue_box]
-  hudiebanjin:
-    cad: hudiebanjin_models.zip
-    test: hudiebanjin_test_bop19.zip
-    pbr_train: hudiebanjin_train_pbr.zip
-    obj_names: [001_metal2]
-  banjinjian:
-    cad: banjinjian_models.zip
-    test: banjinjian_test_bop19.zip
-    pbr_train: banjinjian_train_pbr.zip
-    obj_names: [001_ratchet_spanner]
-  daoliuzhao:
-    cad: daoliuzhao_models.zip
-    test: daoliuzhao_test_bop19.zip
-    pbr_train: daoliuzhao_train_pbr.zip
-    obj_names: [001_metal]
   icmi:
     cad: icmi_models.zip
     test: icmi_test_bop19.zip
@@ -108,3 +93,115 @@ datasets:
     cad: tyol_models.zip
     test: tyol_test_bop19.zip
     obj_names: [001_obj, 002_obj, 003_obj, 004_obj, 005_obj, 006_obj, 007_obj, 008_obj, 009_obj, 010_obj, 011_obj, 012_obj, 013_obj, 014_obj, 015_obj, 016_obj, 017_obj, 018_obj, 019_obj, 020_obj, 021_obj]
+
+  qiuxiao:
+    cad: qiuxiao_models.zip
+    test: qiuxiao_test_bop19.zip
+    pbr_train: qiuxiao_train_pbr.zip
+    obj_names: ["001_qiuxiao"]
+
+  neixinlun:
+    cad: neixinlun_models.zip
+    test: neixinlun_test_bop19.zip
+    pbr_train: neixinlun_train_pbr.zip
+    obj_names: ["002_neixinlun"]
+  neixinlun2:
+    cad: neixinlun_models.zip
+    test: neixinlun_test_bop19.zip
+    pbr_train: neixinlun_train_pbr.zip
+    obj_names: ["002_neixinlun"]
+  zhouchengquan:
+    cad: zhouchengquan_models.zip
+    test: zhouchengquan_test_bop19.zip
+    pbr_train: zhouchengquan_train_pbr.zip
+    obj_names: ["003_zhouchengquan"]
+
+  hudiejian:
+    cad: hudiejian_models.zip
+    test: hudiejian_test_bop19.zip
+    pbr_train: hudiejian_train_pbr.zip
+    obj_names: ["004_hudiejian"]
+
+  daoliuzhao:
+    cad: daoliuzhao_models.zip
+    test: daoliuzhao_test_bop19.zip
+    pbr_train: daoliuzhao_train_pbr.zip
+    obj_names: ["005_daoliuzhao"]
+
+  banjinjia:
+    cad: banjinjia_models.zip
+    test: banjinjia_test_bop19.zip
+    pbr_train: banjinjia_train_pbr.zip
+    obj_names: ["006_banjinjia"]
+
+  liangan:
+    cad: liangan_models.zip
+    test: liangan_test_bop19.zip
+    pbr_train: liangan_train_pbr.zip
+    obj_names: ["007_liangan"]
+
+  diaohuanluoshuan:
+    cad: diaohuanluoshuan_models.zip
+    test: diaohuanluoshuan_test_bop19.zip
+    pbr_train: diaohuanluoshuan_train_pbr.zip
+    obj_names: ["008_diaohuanluoshuan"]
+
+  yuanguan:
+    cad: yuanguan_models.zip
+    test: yuanguan_test_bop19.zip
+    pbr_train: yuanguan_train_pbr.zip
+    obj_names: ["009_yuanguan"]
+
+  lianjiejian:
+    cad: lianjiejian_models.zip
+    test: lianjiejian_test_bop19.zip
+    pbr_train: lianjiejian_train_pbr.zip
+    obj_names: ["010_lianjiejian"]
+
+  hudiebanjin:
+    cad: hudiebanjin_models.zip
+    test: hudiebanjin_test_bop19.zip
+    pbr_train: hudiebanjin_train_pbr.zip
+    obj_names: ["011_hudiebanjin"]
+
+  banjinjianlong:
+    cad: banjinjianlong_models.zip
+    test: banjinjianlong_test_bop19.zip
+    pbr_train: banjinjianlong_train_pbr.zip
+    obj_names: ["012_banjinjianlong"]
+
+  zhijiaobanjin:
+    cad: zhijiaobanjin_models.zip
+    test: zhijiaobanjin_test_bop19.zip
+    pbr_train: zhijiaobanjin_train_pbr.zip
+    obj_names: ["013_zhijiaobanjin"]
+
+  jingjiagongjian:
+    cad: jingjiagongjian_models.zip
+    test: jingjiagongjian_test_bop19.zip
+    pbr_train: jingjiagongjian_train_pbr.zip
+    obj_names: ["014_jingjiagongjian"]
+
+  jiaojieyuanguan:
+    cad: jiaojieyuanguan_models.zip
+    test: jiaojieyuanguan_test_bop19.zip
+    pbr_train: jiaojieyuanguan_train_pbr.zip
+    obj_names: ["015_jiaojieyuanguan"]
+
+  ganqiuxiao:
+    cad: ganqiuxiao_models.zip
+    test: ganqiuxiao_test_bop19.zip
+    pbr_train: ganqiuxiao_train_pbr.zip
+    obj_names: ["016_ganqiuxiao"]
+
+  fanguangzhao:
+    cad: fanguangzhao_models.zip
+    test: fanguangzhao_test_bop19.zip
+    pbr_train: fanguangzhao_train_pbr.zip
+    obj_names: ["017_fanguangzhao"]
+
+  lungufanlan:
+    cad: lungufanlan_models.zip
+    test: lungufanlan_test_bop19.zip
+    pbr_train: lungufanlan_train_pbr.zip
+    obj_names: ["018_lungufanlan"]
