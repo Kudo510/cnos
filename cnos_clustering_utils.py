@@ -7,7 +7,7 @@ import logging
 import torch
 from PIL import Image
 import torchvision.transforms as T
-from src.model.constrastive_learning import resize_and_pad_image
+from src.model.constrastive_learning_utils import resize_and_pad_image
 import numpy as np
 import logging
 from sklearn.cluster import AgglomerativeClustering

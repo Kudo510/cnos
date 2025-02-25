@@ -69,6 +69,7 @@
     10* that [50:450, 150:500, :3] for templates will return better zoomed-in templates - Do that
 
 # Run
+
 Download all dataset
     python -m src.scripts.download_bop23
 Render templates with pyrender for all dataset
@@ -83,20 +84,31 @@ Download BlenderProc4BOP set - 10* This is only required when you want to use re
 Testing on BOP dataset- 
     export DATASET_NAME=icbin # icbin 
     FAST_SAM and pbr
-        python run_inference.py dataset_name=$DATASET_NAME model=cnos_fast
+        HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=daoliuzhao model=cnos_fast
 
     with SAM + pyrender # achtung for itodd the last 2 models 27, 28 has a problem- remove the tempalets if wan to test on the dataset
         python run_inference.py dataset_name=icbin model.onboarding_config.rendering_type=pyrender 
         # dataset_name=banjinjian model.onboarding_config.rendering_type=pyrender
 
     with SAM + PBR # remmber use the original bop_pbr.py
-        HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=icbin
+        HYDRA_FULL_ERROR=1 python run_inference.py dataset_name=tless
 
 Visulizing the results
-    export DATASET_NAME=itodd 
-    export INPUT_FILE=datasets/bop23_challenge/results/cnos_exps/CustomSamAutomaticMaskGenerator_template_pyrender0_aggavg_5_itodd.json
+hudiejian
+banjinjia
 
-    export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/sam_pyrender_itodd #sam_pbr_icbin/
+daoliuzhao
+jingjiagongjian 
+lianjiejian 
+zhijiaobanjin 
+ganqiuxiao 
+diaohuanluoshuan 
+jiaojieyuanguan 
+
+    export DATASET_NAME=jiaojieyuanguan
+    export INPUT_FILE=/home/cuong.van-dam/CuongVanDam/do_an_tot_nghiep/Sam6D/SAM-6D/Instance_Segmentation_Model/log/photoneo_first_second/result_jiaojieyuanguan.json
+
+    export OUTPUT_DIR=datasets/bop23_challenge/results/cnos_exps/visualization/jiaojieyuanguan_sam6d #sam_pbr_icbin/
     # normal visulization
     python -m src.scripts.visualize dataset_name=$DATASET_NAME input_file=$INPUT_FILE output_dir=$OUTPUT_DIR
 

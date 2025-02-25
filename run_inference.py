@@ -5,6 +5,7 @@ from omegaconf import DictConfig, OmegaConf
 from hydra.utils import instantiate
 from torch.utils.data import DataLoader
 import os
+import time
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 
@@ -54,10 +55,12 @@ def run_inference(cfg: DictConfig):
         shuffle=False,
     )
     if cfg.model.onboarding_config.rendering_type == "pyrender": # our case pbr not pyrender
-
         ref_dataloader_config.template_dir += f"templates_pyrender/{cfg.dataset_name}"
         ref_dataset = instantiate(ref_dataloader_config)
     elif cfg.model.onboarding_config.rendering_type == "pbr": # here our case
+        # onboarding_time = time.time()
+        # print("onboarding_time start", onboarding_time)
+
         logging.info("Using BlenderProc for reference images")
         ref_dataloader_config._target_ = "src.dataloader.bop_pbr.BOPTemplatePBR"
         ref_dataloader_config.root_dir = f"{query_dataloader_config.root_dir}"

@@ -139,7 +139,8 @@ def filter_out_invalid_templates_2(patch_features, masks):
     return num_valid_patches, valid_patch_features
 
 
-def templates_feature_extraction(templates, dino_model, num_templates, device):
+
+def templates_feature_extraction(templates, dino_model, num_templates, device,  pca_n_components= 256):
     rgb_normalize = T.Compose(
         [
             T.ToTensor(),
@@ -191,7 +192,7 @@ def templates_feature_extraction(templates, dino_model, num_templates, device):
     num_valid_patches, valid_patch_features = filter_out_invalid_templates(patch_features, masks)
 
     # PCA
-    pca = PCA(n_components=256)
+    pca = PCA(n_components=pca_n_components)
     pca_patches_descriptors = pca.fit_transform(np.array(valid_patch_features))
     # print("pca_crop_patches_descriptors.shape", pca_patches_descriptors.shape)
 
@@ -563,23 +564,31 @@ def calculate_templates_labels(num_valid_patches, kmeans, pca_patches_descriptor
 #     return templates_vector
 
 def calculate_templates_vector(templates_labels, num_clusters = 2048):
-    # Calculate bag-of-words descriptors of the templates
-
     templates_vector = list()
-    all_occurrences = [np.bincount(templates_label, minlength=2048) for templates_label in templates_labels]
+    all_occurrences = [np.bincount(templates_label, minlength=num_clusters) for templates_label in templates_labels]
     ni_array = np.sum(np.array(all_occurrences), axis = 0)
-    N = len(templates_labels) # Number of templates
+    N = len(templates_labels)
+    
     for t in range(len(templates_labels)):
         template_vector = list()
-        occurrences = np.bincount(templates_labels[t], minlength=2048)
-        for i in range(num_clusters):
-            n_it = occurrences[i]
-            nt = len(templates_labels[t])
-            ni = ni_array[i]
-            if ni==0 or nt==0:
-                print(i)
-            bi = n_it / nt * math.log(N / ni)
-            template_vector.append(bi)
+        occurrences = np.bincount(templates_labels[t], minlength=num_clusters)
+        nt = len(templates_labels[t])
+        
+        if nt == 0:
+            # Handle empty template case
+            template_vector = [0.0] * num_clusters
+        else:
+            for i in range(num_clusters):
+                n_it = occurrences[i]
+                ni = ni_array[i]
+                
+                if ni == 0:
+                    # If label i never appears, set its weight to 0
+                    bi = 0.0
+                else:
+                    bi = (n_it / nt) * math.log(N / ni)
+                template_vector.append(bi)
+                
         templates_vector.append(np.array(template_vector))
     return templates_vector
 
@@ -693,24 +702,35 @@ def calculate_bi_values_vectorized(all_occurrences_crop, ni_array, N, nt):
 #     # Convert to torch tensor and reshape
 #     return torch.from_numpy(crop_vector).float().reshape(1, -1)
 
-def calculate_crop_vector(crop_labels, templates_labels, num_clusters = 2048):
-    # For word_i, term frequency = occurences of word_i within the crop / number of occurences of word_i in all templates). 
-    
+def calculate_crop_vector(crop_labels, templates_labels, num_clusters=2048):
     # Calculate bag-of-words descriptors of the templates
     all_occurrences_crop = np.bincount(crop_labels, minlength=num_clusters)
-
     all_occurrences_templates = [np.bincount(templates_label, minlength=num_clusters) for templates_label in templates_labels]
-    ni_array = np.sum(np.array(all_occurrences_templates), axis = 0)
-    N = len(templates_labels) # Number of templates = 642 
-
+    ni_array = np.sum(np.array(all_occurrences_templates), axis=0)
+    N = len(templates_labels)  # Number of templates
+    
+    # Get length of crop
+    nt = crop_labels.shape[0]  # Number of words in crop
+    
     crop_vector = list()
-    for i in range(num_clusters):
-        n_it = all_occurrences_crop[i]
-        nt = crop_labels.shape[0] # Number of words in crop = 400 
-        ni = ni_array[i] + n_it
-        bi = n_it / nt * math.log((N+1) / ni)
-        crop_vector.append(bi)
-    return torch.tensor(crop_vector).view(1,-1) # Goal having features size (1,2048)
+    
+    if nt == 0:
+        # Handle empty crop case
+        crop_vector = [0.0] * num_clusters
+    else:
+        for i in range(num_clusters):
+            n_it = all_occurrences_crop[i]
+            ni = ni_array[i] + n_it
+            
+            if ni == 0:
+                # If label i never appears in templates or crop, set its weight to 0
+                bi = 0.0
+            else:
+                bi = (n_it / nt) * math.log((N + 1) / ni)
+            
+            crop_vector.append(bi)
+    
+    return torch.tensor(crop_vector).view(1, -1)  # Features size (1,2048)
 
 
 # def calculate_crop_vector(crop_labels, templates_labels, num_clusters=2048):

@@ -38,6 +38,24 @@ class LoFTR(nn.Module):
         self.fine_preprocess = FinePreprocess(config)
         self.fine_matching = FineMatching(config)
 
+    def custom_forward(self, data):
+        """ 
+        like forward but only get the features of batch_size, 256, 28*28 - to be batch_size, 28*28, 256
+        """
+        # 1. Local Feature CNN
+        data.update({
+            'bs': data['image0'].size(0), # batch_size 
+            'hw0_i': data['image0'].shape[2:], 'hw1_i': data['image1'].shape[2:]
+        })
+
+        if data['hw0_i'] == data['hw1_i']:  # faster & better BN convergence # our case 2 input iamges with same size
+            ret_dict = self.backbone(torch.cat([data['image0'], data['image1']], dim=0))
+            feats_c = ret_dict['feats_c']
+            (feat_c0, feat_c1) = (feats_c[:data['image0'].size(0)], feats_c[data['image0'].size(0):])
+        
+            return feat_c0.view(feat_c0.shape[0],feat_c0.shape[1], -1) # (batch size, 256, 784)
+    # feat c0 is for batch 0, # feat 1 is for batch 1
+
     def forward(self, data):
         """ 
         Update:

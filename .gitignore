@@ -201,3 +201,7 @@ evaluations/output_masks/
 src_eloftr/weights
 foundpose_analysis_2/
 evaluations/
+visualize_all/*
+media/*
+cnos_analysis/*
+.vscode/*

@@ -21,6 +21,27 @@ lmo_object_ids = np.array(
     ]
 )  # object ID of occlusionLINEMOD is different
 
+xyz_object_ids = np.array(
+    [
+        1,
+        2,
+        4,
+        5,
+        6,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+    ]
+)  # object ID of occlusionLINEMOD is different
+
+
 def save_tensor_image(rgb, save_path):
     '''
     rgb is tensor rgb gpu image, shape as 3, H, W. it is also divided by 255.0 beforehand, and type is float32 not unint8 
@@ -277,8 +298,10 @@ class Detections:
             "scene_id": scene_id,
             "image_id": frame_id,
             "category_id": self.object_ids 
+            # if dataset_name != "xyz"
+            # else xyz_object_ids[self.object_ids-1],
             if dataset_name != "lmo"
-            else lmo_object_ids[self.object_ids],
+            else lmo_object_ids[self.object_ids-1],
             "score": self.scores,
             "bbox": boxes,
             "time": runtime,
@@ -288,27 +311,27 @@ class Detections:
         if return_results:
             return results
     
-    def save_to_file_2(
-        self, scene_id, frame_id, runtime, file_path, dataset_name, return_results=False
-    ):
-        """
-        scene_id, image_id, category_id, bbox, score
-        """
-        boxes = xyxy_to_xywh(self.boxes)
-        results = {
-            "scene_id": scene_id,
-            "image_id": frame_id,
-            "category_id": self.object_ids
-            if dataset_name != "lmo"
-            else lmo_object_ids[self.object_ids],
-            "score": self.scores,
-            "bbox": boxes,
-            "time": 1.0,  # runtime,
-            "segmentation": self.masks,
-        }
-        save_npz(file_path, results)
-        if return_results:
-            return results
+    # def save_to_file_2(
+    #     self, scene_id, frame_id, runtime, file_path, dataset_name, return_results=False
+    # ):
+    #     """
+    #     scene_id, image_id, category_id, bbox, score
+    #     """
+    #     boxes = xyxy_to_xywh(self.boxes)
+    #     results = {
+    #         "scene_id": scene_id,
+    #         "image_id": frame_id,
+    #         "category_id": self.object_ids
+    #         if dataset_name != "lmo"
+    #         else lmo_object_ids[self.object_ids],
+    #         "score": self.scores,
+    #         "bbox": boxes,
+    #         "time": 1.0,  # runtime,
+    #         "segmentation": self.masks,
+    #     }
+    #     save_npz(file_path, results)
+    #     if return_results:
+    #         return results
 
     def load_from_file(self, file_path):
         data = np.load(file_path)

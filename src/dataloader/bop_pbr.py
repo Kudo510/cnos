@@ -33,9 +33,9 @@ class BOPTemplatePBR(BaseBOP):
         processing_config,
         level_templates,
         pose_distribution,
-        split="train_pbr",
+        split="train_pbr", # "train_pbr",
         min_visib_fract=0.8,
-        max_num_scenes=10,  # not need to search all scenes since it is slow
+        max_num_scenes=60,  # not need to search all scenes since it is slow
         max_num_frames=1000,  # not need to search all frames since it is slow
         **kwargs,
     ):
@@ -93,7 +93,8 @@ class BOPTemplatePBR(BaseBOP):
                 if osp.exists(osp.join(scene_path, "rgb")):
                     rgb_paths = sorted(Path(scene_path).glob("rgb/*.[pj][pn][g]"))
                 else:
-                    rgb_paths = sorted(Path(scene_path).glob("gray/*.tif"))
+                    # rgb_paths = sorted(Path(scene_path).glob("gray/*.tif")) # here for itodd
+                    rgb_paths = sorted(Path(scene_path).glob("gray/*.png"))
 
                 # load poses
                 scene_gt_info = load_json(osp.join(scene_path, "scene_gt_info.json"))
@@ -236,7 +237,7 @@ class BOPTemplatePBR(BaseBOP):
 
         # templates_masks shape as 42,224,224
         return {"templates": self.rgb_transform(templates_croped),
-                # "unnormalized_templates": templates_croped,
+                "unnormalized_templates": templates_croped,
                 "templates_masks": templates_masks}
 
 

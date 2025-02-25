@@ -59,13 +59,14 @@ def render(cfg: DictConfig) -> None:
     template_poses[:, :3, 3] *= 0.4  # zoom to object # multiple the tranlation- the fourth column by 0.4
 
     for dataset_name in [
-        # "tless",
+        # "xyz",
         # "tudl",
-        "icbin",
+        # "icbin",
         # "itodd",
         # "hb",
-        # "ycbv",
+        "ycbv",
         # "lmo",
+        # "tless"
     ]:
         dataset_save_dir = osp.join(root_save_dir, dataset_name) # ...templates_pyrender/dataset_name
         logging.info(f"Rendering templates for {dataset_name}")

@@ -69,9 +69,9 @@ def visualize(cfg: DictConfig) -> None:
             obj_id = object_ids[mask_idx]
             temp_id = obj_id - 1
 
-            r = int(255*colors[temp_id][0])
-            g = int(255*colors[temp_id][1])
-            b = int(255*colors[temp_id][2])
+            r = 255 # int(255*colors[temp_id][0])
+            g = 0 # int(255*colors[temp_id][1])
+            b = 0 # int(255*colors[temp_id][2])
             img[mask, 0] = alpha*r + (1 - alpha)*img[mask, 0]
             img[mask, 1] = alpha*g + (1 - alpha)*img[mask, 1]
             img[mask, 2] = alpha*b + (1 - alpha)*img[mask, 2]   
