@@ -205,3 +205,9 @@ datasets:
     test: lungufanlan_test_bop19.zip
     pbr_train: lungufanlan_train_pbr.zip
     obj_names: ["018_lungufanlan"]
+
+  xyz:
+    cad: xyz_models.zip
+    test: xyz_test_bop19.zip
+    pbr_train: xyz_train_pbr.zip
+    obj_names: ["001_xyz", "002_xyz", "004_xyz", "005_xyz", "006_xyz", "008_xyz", "009_xyz", "010_xyz", "011_xyz", "012_xyz", "013_xyz", "014_xyz", "015_xyz", "016_xyz", "017_xyz"]

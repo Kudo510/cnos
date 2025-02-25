@@ -82,7 +82,7 @@ class BaseBOP(Dataset):
                 "scene_id": [],
                 "frame_id": [],
                 "rgb_path": [],
-                "depth_path": [],
+                # "depth_path": [],
                 "intrinsic": [],
             }
             logging.info(f"Loading metaData for split {split}")
@@ -96,8 +96,11 @@ class BaseBOP(Dataset):
                             Path(scene_path).glob("depth/*.[pj][pn][g]")
                         )
                     else:
-                        rgb_paths = sorted(Path(scene_path).glob("gray/*.tif"))
-                        depth_paths = sorted(Path(scene_path).glob("depth/*.tif"))
+                        # rgb_paths = sorted(Path(scene_path).glob("gray/*.tif"))
+                        # depth_paths = sorted(Path(scene_path).glob("depth/*.tif"))
+                        # for xyz
+                        rgb_paths = sorted(Path(scene_path).glob("gray/*.png"))
+                        depth_paths = sorted(Path(scene_path).glob("depth/*.png"))
                     # assert len(rgb_paths) == len(depth_paths), f"{scene_path} rgb and depth mismatch"
 
                     depth_paths = [str(x) for x in depth_paths]
@@ -119,10 +122,10 @@ class BaseBOP(Dataset):
                         depth_path = osp.join(
                             scene_path, "depth", f"{id_frame:06d}.png"
                         )
-                        if depth_path in depth_paths:
-                            metaData["depth_path"].append(depth_path)
-                        else:
-                            metaData["depth_path"].append(None)
+                        # if depth_path in depth_paths:
+                        #     metaData["depth_path"].append(depth_path)
+                        # else:
+                        #     metaData["depth_path"].append(None)
                         metaData["scene_id"].append(scene_id)
                         metaData["frame_id"].append(id_frame)
                         metaData["rgb_path"].append(str(rgb_path))

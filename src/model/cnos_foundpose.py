@@ -238,7 +238,7 @@ def cnos_foundpose(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):
 
 from src.model.utils import BatchedData, Detections, convert_npz_to_json
 from types import SimpleNamespace
-from src.model.dinov2 import CustomDINOv2
+from model.dinov2 import CustomDINOv2
 from src.dataloader.bop import BOPTemplate
 
 def cnos_foundpose_2(rgb_path, scene_id, frame_id, obj_id=1, dataset="icbin"):

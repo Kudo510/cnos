@@ -55,7 +55,7 @@ class CustomSamAutomaticMaskGenerator(SamAutomaticMaskGenerator):
         sam: Sam,
         min_mask_region_area: int = 0, # To remove grains one - set like 100
         points_per_batch: int = 64,
-        stability_score_thresh: float = 0.97,
+        stability_score_thresh: float = 0.5,
         box_nms_thresh: float = 0.7,
         crop_overlap_ratio: float = 512 / 1500,
         segmentor_width_size=640,

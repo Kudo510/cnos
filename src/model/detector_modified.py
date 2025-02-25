@@ -204,7 +204,7 @@ class CNOS(pl.LightningModule):
         frame_id = batch["frame_id"][0] # '51'
         file_path = osp.join(
             self.log_dir,
-            f"predictions/{self.dataset_name}/{self.name_prediction_file}/scene{scene_id}_frame{frame_id}",
+            f"predictions/{self.dataset_name}/{self.name_prediction_file.split("_")[1:]}/scene{scene_id}_frame{frame_id}",
         ) # './datasets/bop23_challenge/results/cnos_exps/predictions/icbin/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin/scene000001_frame51' - so like output path
 
         # save detections to file # here to save the npz file dos zB  datasets/bop23_challenge/results/cnos_exps/predictions/icbin/CustomSamAutomaticMaskGenerator_template_pbr0_aggavg_5_icbin/scene000001_frame0.npz

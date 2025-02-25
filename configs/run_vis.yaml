@@ -6,7 +6,7 @@ defaults:
   - _self_
 
 # define templates
-level: 0
+level: 1
 distribution: all
 
 # dataset and scores to visualize

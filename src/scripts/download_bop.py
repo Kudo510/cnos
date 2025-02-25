@@ -43,12 +43,12 @@ def run_download(config_dataset: DictConfig) -> None:
 def download(cfg: DictConfig) -> None:
     OmegaConf.set_struct(cfg, False)
     for dataset_name in [
-        "lmo",
-        "tless",
+        # "lmo",
+        # "tless",
         "tudl",
-        "icbin",
-        "itodd",
-        "hb",
+        # "icbin",
+        # "itodd",
+        # "hb",
         "ycbv",
     ]:
         logging.info(f"Downloading {dataset_name}")

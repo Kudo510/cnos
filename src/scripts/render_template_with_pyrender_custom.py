@@ -54,24 +54,25 @@ def render(cfg: DictConfig) -> None:
     root_save_dir = osp.join(cfg.data.root_dir, "templates_pyrender") # "ycbv_synthetics_templates_pyrender")
     template_poses = get_obj_poses_from_template_level(  # here load the predefined pose from  the file already src/poses/predefined_poses/cam_poses_level0.npy
     # just copy the conent of the file to the template pose. it has 42 poses with different R, t
-        level=cfg.level, pose_distribution="all" #level = 2
+        level=2, pose_distribution="all" #level = 2
     )
     template_poses[:, :3, 3] *= 0.4  # zoom to object # multiple the tranlation- the fourth column by 0.4
 
     
     for dataset_name in [
+                # "xyz"
                 "qiuxiao",
                 "neixinlun",
                 "neixinlun2",
                 "zhouchengquan",
                 "hudiejian",
-                # "daoliuzhao",
-                # "banjinjia",
+                "daoliuzhao",
+                "banjinjia",
                 "liangan",
                 "diaohuanluoshuan",
                 "yuanguan",
                 "lianjiejian",
-                # "hudiebanjin",
+                "hudiebanjin",
                 "banjinjianlong",
                 "zhijiaobanjin",
                 "jingjiagongjian",
