@@ -1,3 +1,5 @@
+# Link for xyzibd dataset
+https://drive.google.com/file/d/1WKuLPDnIaBXg0F5h1o3JbaIkiiet3vu9/view
 # Install
     conda install -c pytorch -c nvidia faiss-gpu=1.9.0
     conda install anaconda::scikit-learn
